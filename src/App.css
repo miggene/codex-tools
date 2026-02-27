@@ -1,4 +1,56 @@
 :root {
+  --ink: #182230;
+  --subtle: #58657a;
+  --bg-0: #f8fbff;
+  --bg-1: #eef4ff;
+  --bg-2: #e4edfa;
+  --line: rgba(36, 62, 98, 0.18);
+  --brand-hot: #dd741f;
+  --brand-cool: #0f7f77;
+  --card: rgba(255, 255, 255, 0.84);
+  --panel-bg: rgba(255, 255, 255, 0.82);
+  --panel-shadow:
+    0 16px 60px rgba(53, 80, 118, 0.18),
+    inset 0 1px rgba(255, 255, 255, 0.92);
+  --ambient-line: rgba(34, 60, 96, 0.08);
+  --meta-bg: rgba(255, 255, 255, 0.74);
+  --import-bg: rgba(255, 255, 255, 0.78);
+  --button-primary-bg: linear-gradient(120deg, rgba(255, 143, 56, 0.2), rgba(255, 143, 56, 0.08));
+  --button-primary-border: rgba(224, 137, 57, 0.45);
+  --button-ghost-bg: rgba(47, 210, 200, 0.1);
+  --button-ghost-border: rgba(15, 127, 119, 0.35);
+  --button-danger-bg: rgba(242, 106, 119, 0.11);
+  --button-danger-border: rgba(181, 66, 78, 0.35);
+  --hint: #236fb1;
+  --update-border: rgba(93, 141, 196, 0.42);
+  --update-bg: linear-gradient(120deg, rgba(224, 237, 255, 0.82), rgba(242, 248, 255, 0.92));
+  --update-strong: #244566;
+  --update-subtle: #4f6785;
+  --update-body: #365172;
+  --update-progress: #1b6cae;
+  --empty-border: rgba(123, 146, 176, 0.5);
+  --card-shine: rgba(66, 94, 128, 0.22);
+  --card-shadow: inset 0 1px rgba(255, 255, 255, 0.74);
+  --stamp-plan-color: #7a3c12;
+  --stamp-plan-border: rgba(216, 128, 58, 0.6);
+  --stamp-plan-bg: rgba(255, 157, 78, 0.24);
+  --stamp-current-color: #0e6760;
+  --stamp-current-border: rgba(81, 195, 185, 0.56);
+  --stamp-current-bg: rgba(123, 226, 217, 0.28);
+  --name-current: #d06a21;
+  --name-current-glow: rgba(255, 164, 95, 0.24);
+  --usage-remain: #5f6f87;
+  --bar-track: rgba(120, 143, 175, 0.26);
+  --credits: #2b79b8;
+  --error-text: #b64a58;
+  --glow-hot: rgba(255, 145, 56, 0.14);
+  --glow-cool: rgba(47, 210, 200, 0.12);
+  --body-bg: #eef4ff;
+  --ok: #38d49f;
+  --danger: #f26a77;
+}
+
+:root[data-theme="dark"] {
   --ink: #f6efe3;
   --subtle: #aeb5c8;
   --bg-0: #070d17;
@@ -8,8 +60,44 @@
   --brand-hot: #ff8f38;
   --brand-cool: #2fd2c8;
   --card: rgba(10, 19, 35, 0.68);
-  --ok: #38d49f;
-  --danger: #f26a77;
+  --panel-bg: rgba(5, 10, 20, 0.66);
+  --panel-shadow:
+    0 16px 60px rgba(0, 0, 0, 0.42),
+    inset 0 1px rgba(255, 255, 255, 0.06);
+  --ambient-line: rgba(248, 255, 255, 0.1);
+  --meta-bg: rgba(16, 27, 48, 0.45);
+  --import-bg: rgba(17, 34, 62, 0.54);
+  --button-primary-bg: linear-gradient(120deg, rgba(255, 143, 56, 0.3), rgba(255, 143, 56, 0.15));
+  --button-primary-border: rgba(255, 196, 138, 0.5);
+  --button-ghost-bg: rgba(47, 210, 200, 0.08);
+  --button-ghost-border: rgba(117, 231, 222, 0.45);
+  --button-danger-bg: rgba(242, 106, 119, 0.12);
+  --button-danger-border: rgba(242, 106, 119, 0.45);
+  --hint: #9fd0ff;
+  --update-border: rgba(126, 204, 255, 0.42);
+  --update-bg: linear-gradient(120deg, rgba(34, 72, 124, 0.38), rgba(18, 34, 62, 0.52));
+  --update-strong: #cdeaff;
+  --update-subtle: #a9c6de;
+  --update-body: #d8e8f7;
+  --update-progress: #9fd0ff;
+  --empty-border: rgba(239, 244, 255, 0.34);
+  --card-shine: rgba(255, 255, 255, 0.18);
+  --card-shadow: inset 0 1px rgba(255, 255, 255, 0.05);
+  --stamp-plan-color: #ffe2cb;
+  --stamp-plan-border: rgba(255, 175, 112, 0.62);
+  --stamp-plan-bg: rgba(255, 140, 52, 0.2);
+  --stamp-current-color: #c0fff8;
+  --stamp-current-border: rgba(144, 245, 235, 0.6);
+  --stamp-current-bg: rgba(60, 207, 189, 0.18);
+  --name-current: #ffcf9f;
+  --name-current-glow: rgba(255, 164, 95, 0.28);
+  --usage-remain: #a9b6cd;
+  --bar-track: rgba(214, 226, 255, 0.14);
+  --credits: #a7d9ff;
+  --error-text: #ff98a2;
+  --glow-hot: rgba(255, 145, 56, 0.24);
+  --glow-cool: rgba(47, 210, 200, 0.18);
+  --body-bg: #0a1220;
 }
 
 * {
@@ -21,10 +109,11 @@
   padding: 28px;
   color: var(--ink);
   background:
-    radial-gradient(150% 120% at 8% 0%, rgba(255, 145, 56, 0.24) 0%, transparent 44%),
-    radial-gradient(120% 95% at 92% 8%, rgba(47, 210, 200, 0.18) 0%, transparent 41%),
+    radial-gradient(150% 120% at 8% 0%, var(--glow-hot) 0%, transparent 44%),
+    radial-gradient(120% 95% at 92% 8%, var(--glow-cool) 0%, transparent 41%),
     linear-gradient(150deg, var(--bg-0) 0%, var(--bg-1) 40%, var(--bg-2) 100%);
   position: relative;
+  transition: background 220ms ease, color 220ms ease;
 }
 
 .ambient {
@@ -34,8 +123,8 @@
   opacity: 0.18;
   background-image: repeating-linear-gradient(
     -38deg,
-    rgba(248, 255, 255, 0.1) 0,
-    rgba(248, 255, 255, 0.1) 1px,
+    var(--ambient-line) 0,
+    var(--ambient-line) 1px,
     transparent 1px,
     transparent 11px
   );
@@ -49,11 +138,9 @@
   border: 1px solid var(--line);
   border-radius: 24px;
   padding: 26px;
-  background: rgba(5, 10, 20, 0.66);
+  background: var(--panel-bg);
   backdrop-filter: blur(8px);
-  box-shadow:
-    0 16px 60px rgba(0, 0, 0, 0.42),
-    inset 0 1px rgba(255, 255, 255, 0.06);
+  box-shadow: var(--panel-shadow);
 }
 
 .topbar {
@@ -77,11 +164,24 @@
   letter-spacing: 0.03em;
 }
 
-.subtitle {
-  margin: 10px 0 0;
-  max-width: 66ch;
-  color: var(--subtle);
-  font: 400 0.98rem/1.5 "IBM Plex Sans", sans-serif;
+.brandLine {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brandLine h1 {
+  margin: 0;
+}
+
+.appLogo {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  box-shadow: 0 4px 16px rgba(20, 38, 66, 0.18);
 }
 
 .topActions {
@@ -113,18 +213,18 @@ button:disabled {
 }
 
 button.primary {
-  background: linear-gradient(120deg, rgba(255, 143, 56, 0.3), rgba(255, 143, 56, 0.15));
-  border-color: rgba(255, 196, 138, 0.5);
+  background: var(--button-primary-bg);
+  border-color: var(--button-primary-border);
 }
 
 button.ghost {
-  background: rgba(47, 210, 200, 0.08);
-  border-color: rgba(117, 231, 222, 0.45);
+  background: var(--button-ghost-bg);
+  border-color: var(--button-ghost-border);
 }
 
 button.danger {
-  background: rgba(242, 106, 119, 0.12);
-  border-color: rgba(242, 106, 119, 0.45);
+  background: var(--button-danger-bg);
+  border-color: var(--button-danger-border);
 }
 
 .metaStrip {
@@ -138,7 +238,7 @@ button.danger {
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 12px;
-  background: rgba(16, 27, 48, 0.45);
+  background: var(--meta-bg);
 }
 
 .metaStrip span {
@@ -160,7 +260,7 @@ button.danger {
   margin-top: 16px;
   border: 1px solid var(--line);
   border-radius: 18px;
-  background: rgba(17, 34, 62, 0.54);
+  background: var(--import-bg);
   padding: 16px;
 }
 
@@ -185,7 +285,7 @@ button.danger {
 
 .hint {
   margin: 8px 0 0;
-  color: #9fd0ff;
+  color: var(--hint);
   font: 500 0.78rem/1.3 "IBM Plex Sans", sans-serif;
 }
 
@@ -214,10 +314,10 @@ button.danger {
 
 .updateBanner {
   margin-top: 12px;
-  border: 1px solid rgba(126, 204, 255, 0.42);
+  border: 1px solid var(--update-border);
   border-radius: 14px;
   padding: 12px;
-  background: linear-gradient(120deg, rgba(34, 72, 124, 0.38), rgba(18, 34, 62, 0.52));
+  background: var(--update-bg);
 }
 
 .updateText {
@@ -230,11 +330,11 @@ button.danger {
 
 .updateText strong {
   font: 700 0.92rem/1.2 "IBM Plex Sans", sans-serif;
-  color: #cdeaff;
+  color: var(--update-strong);
 }
 
 .updateText span {
-  color: #a9c6de;
+  color: var(--update-subtle);
   font: 500 0.78rem/1.2 "IBM Plex Sans", sans-serif;
 }
 
@@ -244,14 +344,14 @@ button.danger {
 
 .updateBody {
   margin: 10px 0 0;
-  color: #d8e8f7;
+  color: var(--update-body);
   font: 400 0.78rem/1.4 "IBM Plex Sans", sans-serif;
   white-space: pre-wrap;
 }
 
 .updateProgress {
   margin: 8px 0 0;
-  color: #9fd0ff;
+  color: var(--update-progress);
   font: 600 0.76rem/1.2 "IBM Plex Mono", monospace;
 }
 
@@ -263,7 +363,7 @@ button.danger {
 }
 
 .emptyState {
-  border: 1px dashed rgba(239, 244, 255, 0.34);
+  border: 1px dashed var(--empty-border);
   border-radius: 16px;
   padding: 30px;
   text-align: center;
@@ -286,7 +386,7 @@ button.danger {
   border-radius: 16px;
   padding: 18px 14px 14px;
   background: var(--card);
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.05);
+  box-shadow: var(--card-shadow);
   animation: riseIn 320ms ease both;
   position: relative;
   overflow: hidden;
@@ -299,7 +399,7 @@ button.danger {
   top: 0;
   width: 100%;
   height: 2px;
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--card-shine);
 }
 
 .accountCard.tone-team {
@@ -376,15 +476,15 @@ button.danger {
 }
 
 .stampPlan {
-  color: #ffe2cb;
-  border-color: rgba(255, 175, 112, 0.62);
-  background: rgba(255, 140, 52, 0.2);
+  color: var(--stamp-plan-color);
+  border-color: var(--stamp-plan-border);
+  background: var(--stamp-plan-bg);
 }
 
 .stampCurrent {
-  color: #c0fff8;
-  border-color: rgba(144, 245, 235, 0.6);
-  background: rgba(60, 207, 189, 0.18);
+  color: var(--stamp-current-color);
+  border-color: var(--stamp-current-border);
+  background: var(--stamp-current-bg);
 }
 
 .cardHead {
@@ -401,8 +501,8 @@ button.danger {
 }
 
 .cardHead h3.nameCurrent {
-  color: #ffcf9f;
-  text-shadow: 0 0 24px rgba(255, 164, 95, 0.28);
+  color: var(--name-current);
+  text-shadow: 0 0 24px var(--name-current-glow);
 }
 
 .cardHead p {
@@ -434,7 +534,7 @@ button.danger {
 }
 
 .usageStats em {
-  color: #a9b6cd;
+  color: var(--usage-remain);
   font-style: normal;
   font: 500 0.75rem/1 "IBM Plex Sans", sans-serif;
 }
@@ -444,7 +544,7 @@ button.danger {
   height: 9px;
   border-radius: 999px;
   overflow: hidden;
-  background: rgba(214, 226, 255, 0.14);
+  background: var(--bar-track);
 }
 
 .barFill {
@@ -470,13 +570,13 @@ button.danger {
 
 .credits {
   margin: 9px 0 0;
-  color: #a7d9ff;
+  color: var(--credits);
   font: 500 0.76rem/1.3 "IBM Plex Mono", monospace;
 }
 
 .errorText {
   margin: 10px 0 0;
-  color: #ff98a2;
+  color: var(--error-text);
   font: 400 0.75rem/1.35 "IBM Plex Sans", sans-serif;
   word-break: break-word;
 }

@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Codex Account Switcher",
+  "productName": "Codex Tools",
   "version": "0.1.1",
-  "identifier": "com.carry.codex-account-switcher",
+  "identifier": "com.carry.codex-tools",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Codex Account Switcher",
+        "title": "Codex Tools",
         "width": 1320,
         "height": 860,
         "resizable": true,

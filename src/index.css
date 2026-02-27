@@ -1,5 +1,13 @@
 @import url("https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
 
+:root {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
 html,
 body,
 #root {
@@ -9,5 +17,7 @@ body,
 
 body {
   min-width: 320px;
-  background: #0a1220;
+  background: var(--body-bg, #eef4ff);
+  color: var(--ink, #182230);
+  transition: background 220ms ease, color 220ms ease;
 }

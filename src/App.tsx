@@ -70,9 +70,21 @@ type AddFlow = {
   baselineFingerprint: string | null;
 };
 
+type ThemeMode = "light" | "dark";
+
 const REFRESH_MS = 30_000;
 const ADD_FLOW_TIMEOUT_MS = 10 * 60_000;
 const ADD_FLOW_POLL_MS = 2_500;
+const THEME_STORAGE_KEY = "codex-tools-theme";
+
+function readInitialTheme(): ThemeMode {
+  if (typeof window === "undefined") {
+    return "light";
+  }
+
+  const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
+  return saved === "dark" || saved === "light" ? saved : "light";
+}
 
 function percent(value: number | undefined | null): string {
   if (value === undefined || value === null || Number.isNaN(value)) {
@@ -147,6 +159,7 @@ function formatWindowLabel(window: UsageWindow | null, fallback: string): string
 }
 
 function App() {
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => readInitialTheme());
   const [accounts, setAccounts] = useState<AccountSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -163,6 +176,11 @@ function App() {
     () => accounts.filter((account) => account.isCurrent).length,
     [accounts],
   );
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", themeMode);
+    window.localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+  }, [themeMode]);
 
   const loadAccounts = useCallback(async () => {
     const data = await invoke<AccountSummary[]>("list_accounts");
@@ -437,6 +455,10 @@ function App() {
     [loadAccounts],
   );
 
+  const onToggleTheme = useCallback(() => {
+    setThemeMode((prev) => (prev === "light" ? "dark" : "light"));
+  }, []);
+
   return (
     <div className="shell">
       <div className="ambient" />
@@ -444,12 +466,15 @@ function App() {
         <header className="topbar">
           <div>
             <p className="kicker">Codex Multi Account</p>
-            <h1>Codex 账号切换器</h1>
-            <p className="subtitle">
-              自动同步 5h / 1week 用量（每 30 秒），支持一键切换，并可检测 GitHub Releases 新版本。
-            </p>
+            <div className="brandLine">
+              <img className="appLogo" src="/codex-tools.png" alt="Codex Tools logo" />
+              <h1>Codex Tools</h1>
+            </div>
           </div>
           <div className="topActions">
+            <button className="ghost" onClick={onToggleTheme}>
+              {themeMode === "light" ? "切换深色" : "切换浅色"}
+            </button>
             <button
               className="ghost"
               onClick={() => void checkForAppUpdate(false)}

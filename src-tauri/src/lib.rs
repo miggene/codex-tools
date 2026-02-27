@@ -1,6 +1,6 @@
-use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
@@ -9,6 +9,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
+use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 use tauri::AppHandle;
@@ -20,6 +21,19 @@ use uuid::Uuid;
 const DEFAULT_CHATGPT_BASE_URL: &str = "https://chatgpt.com/backend-api";
 const CODEX_USAGE_PATH: &str = "/api/codex/usage";
 const WHAM_USAGE_PATH: &str = "/wham/usage";
+const REFRESH_INTERVAL_SECONDS: u64 = 30;
+
+#[cfg(target_os = "macos")]
+const TRAY_ID: &str = "codex_tools_status_bar";
+#[cfg(target_os = "macos")]
+const TRAY_MENU_REFRESH_ID: &str = "tray_refresh_usage";
+#[cfg(target_os = "macos")]
+const TRAY_MENU_OPEN_ID: &str = "tray_open_window";
+#[cfg(target_os = "macos")]
+const TRAY_MENU_QUIT_ID: &str = "tray_quit";
+#[cfg(target_os = "macos")]
+const STATUS_BAR_ICON: tauri::image::Image<'_> =
+    tauri::include_image!("./icons/codex-tools-statusbar.png");
 
 #[derive(Default)]
 struct AppState {
@@ -256,6 +270,7 @@ async fn import_current_auth_account(
     };
 
     save_store(&app, &store)?;
+    let _ = refresh_macos_tray_snapshot(&app);
     Ok(summary)
 }
 
@@ -274,17 +289,18 @@ async fn delete_account(
         return Err("未找到要删除的账号".to_string());
     }
 
-    save_store(&app, &store)
+    save_store(&app, &store)?;
+    let _ = refresh_macos_tray_snapshot(&app);
+    Ok(())
 }
 
-#[tauri::command]
-async fn refresh_all_usage(
-    app: AppHandle,
-    state: State<'_, AppState>,
+async fn refresh_all_usage_internal(
+    app: &AppHandle,
+    state: &AppState,
 ) -> Result<Vec<AccountSummary>, String> {
     let mut store = {
         let _guard = state.store_lock.lock().await;
-        load_store(&app)?
+        load_store(app)?
     };
 
     for account in &mut store.accounts {
@@ -295,10 +311,7 @@ async fn refresh_all_usage(
 
         match fetch_result {
             Ok(snapshot) => {
-                account.plan_type = snapshot
-                    .plan_type
-                    .clone()
-                    .or(account.plan_type.clone());
+                account.plan_type = snapshot.plan_type.clone().or(account.plan_type.clone());
                 account.updated_at = now_unix_seconds();
                 account.usage = Some(snapshot);
                 account.usage_error = None;
@@ -312,7 +325,7 @@ async fn refresh_all_usage(
 
     {
         let _guard = state.store_lock.lock().await;
-        save_store(&app, &store)?;
+        save_store(app, &store)?;
     }
 
     let current_account_id = current_auth_account_id();
@@ -321,6 +334,16 @@ async fn refresh_all_usage(
         .iter()
         .map(|account| account.to_summary(current_account_id.as_deref()))
         .collect())
+}
+
+#[tauri::command]
+async fn refresh_all_usage(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<AccountSummary>, String> {
+    let summaries = refresh_all_usage_internal(&app, state.inner()).await?;
+    let _ = update_macos_tray_snapshot(&app, &summaries);
+    Ok(summaries)
 }
 
 #[tauri::command]
@@ -352,7 +375,10 @@ async fn launch_codex_login(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn restore_auth_after_add_flow(state: State<'_, AppState>) -> Result<bool, String> {
+async fn restore_auth_after_add_flow(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
     let backup = {
         let mut guard = state.add_flow_auth_backup.lock().await;
         guard.take()
@@ -362,10 +388,12 @@ async fn restore_auth_after_add_flow(state: State<'_, AppState>) -> Result<bool,
         None => Ok(false),
         Some(Some(auth_json)) => {
             write_active_codex_auth(&auth_json)?;
+            let _ = refresh_macos_tray_snapshot(&app);
             Ok(true)
         }
         Some(None) => {
             remove_active_codex_auth()?;
+            let _ = refresh_macos_tray_snapshot(&app);
             Ok(true)
         }
     }
@@ -391,6 +419,7 @@ async fn switch_account_and_launch(
         .ok_or_else(|| "找不到要切换的账号".to_string())?;
 
     write_active_codex_auth(&account.auth_json)?;
+    let _ = refresh_macos_tray_snapshot(&app);
 
     let app_path = find_codex_app_path();
     if let Some(path) = app_path {
@@ -441,8 +470,7 @@ fn load_store(app: &AppHandle) -> Result<AccountsStore, String> {
     let raw = fs::read_to_string(&path)
         .map_err(|e| format!("读取账号存储文件失败 {}: {e}", path.display()))?;
 
-    serde_json::from_str(&raw)
-        .map_err(|e| format!("账号存储文件格式无效 {}: {e}", path.display()))
+    serde_json::from_str(&raw).map_err(|e| format!("账号存储文件格式无效 {}: {e}", path.display()))
 }
 
 fn save_store(app: &AppHandle, store: &AccountsStore) -> Result<(), String> {
@@ -453,8 +481,8 @@ fn save_store(app: &AppHandle, store: &AccountsStore) -> Result<(), String> {
     fs::create_dir_all(parent)
         .map_err(|e| format!("创建存储目录失败 {}: {e}", parent.display()))?;
 
-    let serialized = serde_json::to_string_pretty(store)
-        .map_err(|e| format!("序列化账号存储失败: {e}"))?;
+    let serialized =
+        serde_json::to_string_pretty(store).map_err(|e| format!("序列化账号存储失败: {e}"))?;
     fs::write(&path, serialized)
         .map_err(|e| format!("写入账号存储文件失败 {}: {e}", path.display()))?;
     set_private_permissions(&path);
@@ -484,8 +512,8 @@ fn read_current_codex_auth_optional() -> Result<Option<Value>, String> {
 
     let raw = fs::read_to_string(&path)
         .map_err(|e| format!("读取当前 Codex 认证文件失败 {}: {e}", path.display()))?;
-    let value = serde_json::from_str(&raw)
-        .map_err(|e| format!("当前 Codex 认证文件不是合法 JSON: {e}"))?;
+    let value =
+        serde_json::from_str(&raw).map_err(|e| format!("当前 Codex 认证文件不是合法 JSON: {e}"))?;
     Ok(Some(value))
 }
 
@@ -587,7 +615,10 @@ fn extract_auth(auth_json: &Value) -> Result<ExtractedAuth, String> {
         .unwrap_or_default();
 
     if !(mode.eq_ignore_ascii_case("chatgpt") || mode.eq_ignore_ascii_case("chatgpt_auth_tokens")) {
-        return Err("当前账号不是 ChatGPT 登录模式，无法读取 Codex 5h/1week 用量。请先执行 codex login。".to_string());
+        return Err(
+            "当前账号不是 ChatGPT 登录模式，无法读取 Codex 5h/1week 用量。请先执行 codex login。"
+                .to_string(),
+        );
     }
 
     let tokens = auth_json
@@ -632,7 +663,8 @@ fn extract_auth(auth_json: &Value) -> Result<ExtractedAuth, String> {
             .map(ToString::to_string);
     }
 
-    let account_id = account_id.ok_or_else(|| "无法从 auth.json 识别 chatgpt_account_id".to_string())?;
+    let account_id =
+        account_id.ok_or_else(|| "无法从 auth.json 识别 chatgpt_account_id".to_string())?;
 
     Ok(ExtractedAuth {
         account_id,
@@ -674,11 +706,14 @@ fn current_auth_account_id() -> Option<String> {
     })
 }
 
-async fn fetch_usage_snapshot(access_token: &str, account_id: &str) -> Result<UsageSnapshot, String> {
+async fn fetch_usage_snapshot(
+    access_token: &str,
+    account_id: &str,
+) -> Result<UsageSnapshot, String> {
     let usage_url = resolve_usage_url();
 
     let client = reqwest::Client::builder()
-        .user_agent("codex-account-switcher/0.1")
+        .user_agent("codex-tools/0.1")
         .build()
         .map_err(|e| format!("创建 HTTP 客户端失败: {e}"))?;
 
@@ -708,7 +743,8 @@ async fn fetch_usage_snapshot(access_token: &str, account_id: &str) -> Result<Us
 }
 
 fn resolve_usage_url() -> String {
-    let base_url = read_chatgpt_base_url_from_config().unwrap_or_else(|| DEFAULT_CHATGPT_BASE_URL.to_string());
+    let base_url =
+        read_chatgpt_base_url_from_config().unwrap_or_else(|| DEFAULT_CHATGPT_BASE_URL.to_string());
     let normalized = base_url.trim_end_matches('/');
 
     if normalized.contains("/backend-api") {
@@ -875,11 +911,301 @@ fn set_private_permissions(path: &Path) {
     }
 }
 
+fn format_percent(value: Option<f64>) -> String {
+    value
+        .map(|percent| percent.clamp(0.0, 100.0).round() as i64)
+        .map(|percent| format!("{percent}%"))
+        .unwrap_or_else(|| "--".to_string())
+}
+
+fn remaining_percent(window: Option<&UsageWindow>) -> Option<f64> {
+    window.map(|item| 100.0 - item.used_percent)
+}
+
+#[cfg(target_os = "macos")]
+fn tray_account_usage_line(account: &AccountSummary) -> String {
+    let five_hour_remaining = format_percent(remaining_percent(
+        account
+            .usage
+            .as_ref()
+            .and_then(|usage| usage.five_hour.as_ref()),
+    ));
+    let one_week_remaining = format_percent(remaining_percent(
+        account
+            .usage
+            .as_ref()
+            .and_then(|usage| usage.one_week.as_ref()),
+    ));
+
+    let current_prefix = if account.is_current { "[当前] " } else { "" };
+    format!(
+        "{current_prefix}{} | 5h剩余 {five_hour_remaining} | 1week剩余 {one_week_remaining}",
+        account.label
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn build_macos_tray_title(accounts: &[AccountSummary]) -> String {
+    if let Some(current) = accounts.iter().find(|account| account.is_current) {
+        let five_hour_remaining = format_percent(remaining_percent(
+            current
+                .usage
+                .as_ref()
+                .and_then(|usage| usage.five_hour.as_ref()),
+        ));
+        return format!("Codex {five_hour_remaining}");
+    }
+
+    "Codex".to_string()
+}
+
+#[cfg(target_os = "macos")]
+fn build_macos_tray_tooltip(accounts: &[AccountSummary]) -> String {
+    let mut lines = vec!["Codex Tools 用量".to_string()];
+
+    if let Some(current) = accounts.iter().find(|account| account.is_current) {
+        lines.push(format!("当前: {}", tray_account_usage_line(current)));
+    } else {
+        lines.push("当前: 未检测到正在使用的账号".to_string());
+    }
+
+    if accounts.is_empty() {
+        lines.push("暂无账号，请先在主窗口添加账号".to_string());
+        return lines.join("\n");
+    }
+
+    lines.push(format!("全部账号（{}）:", accounts.len()));
+    for account in accounts.iter().take(8) {
+        lines.push(format!("• {}", tray_account_usage_line(account)));
+    }
+    if accounts.len() > 8 {
+        lines.push(format!("… 还有 {} 个账号", accounts.len() - 8));
+    }
+
+    lines.join("\n")
+}
+
+#[cfg(target_os = "macos")]
+fn build_macos_tray_menu(
+    app: &AppHandle,
+    accounts: &[AccountSummary],
+) -> Result<tauri::menu::Menu<tauri::Wry>, String> {
+    use tauri::menu::Menu;
+    use tauri::menu::MenuItem;
+    use tauri::menu::PredefinedMenuItem;
+
+    let menu = Menu::new(app).map_err(|e| format!("创建状态栏菜单失败: {e}"))?;
+
+    let header = MenuItem::with_id(app, "tray_header", "Codex Tools 用量", false, None::<&str>)
+        .map_err(|e| format!("创建状态栏菜单项失败: {e}"))?;
+    menu.append(&header)
+        .map_err(|e| format!("写入状态栏菜单失败: {e}"))?;
+
+    let current_line = if let Some(current) = accounts.iter().find(|account| account.is_current) {
+        format!("当前账号: {}", tray_account_usage_line(current))
+    } else {
+        "当前账号: 未检测到".to_string()
+    };
+    let current_item = MenuItem::with_id(
+        app,
+        "tray_current_summary",
+        current_line,
+        false,
+        None::<&str>,
+    )
+    .map_err(|e| format!("创建状态栏菜单项失败: {e}"))?;
+    menu.append(&current_item)
+        .map_err(|e| format!("写入状态栏菜单失败: {e}"))?;
+
+    let separator =
+        PredefinedMenuItem::separator(app).map_err(|e| format!("创建状态栏分隔符失败: {e}"))?;
+    menu.append(&separator)
+        .map_err(|e| format!("写入状态栏菜单失败: {e}"))?;
+
+    if accounts.is_empty() {
+        let empty = MenuItem::with_id(
+            app,
+            "tray_accounts_empty",
+            "暂无账号（请在主窗口添加）",
+            false,
+            None::<&str>,
+        )
+        .map_err(|e| format!("创建状态栏菜单项失败: {e}"))?;
+        menu.append(&empty)
+            .map_err(|e| format!("写入状态栏菜单失败: {e}"))?;
+    } else {
+        for (index, account) in accounts.iter().enumerate() {
+            let id = format!("tray_account_{index}");
+            let line_item = MenuItem::with_id(
+                app,
+                id,
+                tray_account_usage_line(account),
+                false,
+                None::<&str>,
+            )
+            .map_err(|e| format!("创建状态栏菜单项失败: {e}"))?;
+            menu.append(&line_item)
+                .map_err(|e| format!("写入状态栏菜单失败: {e}"))?;
+        }
+    }
+
+    let separator =
+        PredefinedMenuItem::separator(app).map_err(|e| format!("创建状态栏分隔符失败: {e}"))?;
+    menu.append(&separator)
+        .map_err(|e| format!("写入状态栏菜单失败: {e}"))?;
+
+    let refresh = MenuItem::with_id(
+        app,
+        TRAY_MENU_REFRESH_ID,
+        "立即刷新用量",
+        true,
+        None::<&str>,
+    )
+    .map_err(|e| format!("创建状态栏菜单项失败: {e}"))?;
+    let open = MenuItem::with_id(
+        app,
+        TRAY_MENU_OPEN_ID,
+        "打开 Codex Tools",
+        true,
+        None::<&str>,
+    )
+    .map_err(|e| format!("创建状态栏菜单项失败: {e}"))?;
+    let quit = MenuItem::with_id(app, TRAY_MENU_QUIT_ID, "退出", true, None::<&str>)
+        .map_err(|e| format!("创建状态栏菜单项失败: {e}"))?;
+
+    menu.append(&refresh)
+        .map_err(|e| format!("写入状态栏菜单失败: {e}"))?;
+    menu.append(&open)
+        .map_err(|e| format!("写入状态栏菜单失败: {e}"))?;
+    menu.append(&quit)
+        .map_err(|e| format!("写入状态栏菜单失败: {e}"))?;
+
+    Ok(menu)
+}
+
+#[cfg(target_os = "macos")]
+fn update_macos_tray_snapshot(app: &AppHandle, accounts: &[AccountSummary]) -> Result<(), String> {
+    let tray = app
+        .tray_by_id(TRAY_ID)
+        .ok_or_else(|| "状态栏尚未初始化".to_string())?;
+
+    let menu = build_macos_tray_menu(app, accounts)?;
+    tray.set_menu(Some(menu))
+        .map_err(|e| format!("更新状态栏菜单失败: {e}"))?;
+    tray.set_title(Some(build_macos_tray_title(accounts)))
+        .map_err(|e| format!("更新状态栏标题失败: {e}"))?;
+    tray.set_tooltip(Some(build_macos_tray_tooltip(accounts)))
+        .map_err(|e| format!("更新状态栏提示失败: {e}"))?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn update_macos_tray_snapshot(
+    _app: &AppHandle,
+    _accounts: &[AccountSummary],
+) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn refresh_macos_tray_snapshot(app: &AppHandle) -> Result<(), String> {
+    let store = load_store(app)?;
+    let current_account_id = current_auth_account_id();
+    let summaries: Vec<AccountSummary> = store
+        .accounts
+        .iter()
+        .map(|account| account.to_summary(current_account_id.as_deref()))
+        .collect();
+    update_macos_tray_snapshot(app, &summaries)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn refresh_macos_tray_snapshot(_app: &AppHandle) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn start_macos_tray_refresh_loop(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            let state = app.state::<AppState>();
+            if let Ok(summaries) = refresh_all_usage_internal(&app, state.inner()).await {
+                let _ = update_macos_tray_snapshot(&app, &summaries);
+            }
+            tokio::time::sleep(Duration::from_secs(REFRESH_INTERVAL_SECONDS)).await;
+        }
+    });
+}
+
+#[cfg(target_os = "macos")]
+fn setup_macos_status_bar(app: &AppHandle) -> Result<(), String> {
+    use tauri::tray::TrayIconBuilder;
+
+    let store = load_store(app)?;
+    let current_account_id = current_auth_account_id();
+    let summaries: Vec<AccountSummary> = store
+        .accounts
+        .iter()
+        .map(|account| account.to_summary(current_account_id.as_deref()))
+        .collect();
+    let menu = build_macos_tray_menu(app, &summaries)?;
+
+    TrayIconBuilder::with_id(TRAY_ID)
+        .menu(&menu)
+        .icon(STATUS_BAR_ICON)
+        .icon_as_template(true)
+        .title(build_macos_tray_title(&summaries))
+        .tooltip(build_macos_tray_tooltip(&summaries))
+        .show_menu_on_left_click(true)
+        .build(app)
+        .map_err(|e| format!("创建 macOS 状态栏失败: {e}"))?;
+
+    start_macos_tray_refresh_loop(app.clone());
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn setup_macos_status_bar(_app: &AppHandle) -> Result<(), String> {
+    Ok(())
+}
+
+fn handle_status_bar_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
+    #[cfg(target_os = "macos")]
+    {
+        let id = event.id().as_ref();
+        if id == TRAY_MENU_QUIT_ID {
+            app.exit(0);
+            return;
+        }
+
+        if id == TRAY_MENU_OPEN_ID {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+            return;
+        }
+
+        if id == TRAY_MENU_REFRESH_ID {
+            let app_handle = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let state = app_handle.state::<AppState>();
+                if let Ok(summaries) = refresh_all_usage_internal(&app_handle, state.inner()).await
+                {
+                    let _ = update_macos_tray_snapshot(&app_handle, &summaries);
+                }
+            });
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .on_menu_event(handle_status_bar_menu_event)
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -888,6 +1214,7 @@ pub fn run() {
                         .build(),
                 )?;
             }
+            setup_macos_status_bar(app.handle())?;
             Ok(())
         })
         .manage(AppState::default())
