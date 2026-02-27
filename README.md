@@ -1,102 +1,88 @@
-# Codex Account Switcher
+# Codex Tools
 
-React + Tauri desktop app (macOS-first) for managing multiple Codex accounts, showing 5h / 1week usage, and one-click switching.
+一个基于 **React + Tauri** 的桌面工具，用来管理多个 Codex 账号：
+- 看每个账号的用量
+- 快速切换账号
+- 自动拉起 Codex
 
-## Local development
+仓库地址：<https://github.com/170-carry/codex-tools>
+
+## 快速启动（本地开发）
+
+### 1) 环境准备
+
+- Node.js 20+
+- Rust stable
+- macOS 或 Windows（优先支持 macOS）
+
+### 2) 安装依赖
 
 ```bash
 npm install
+```
+
+### 3) 启动桌面应用
+
+```bash
 npm run tauri dev
 ```
 
-## What is already configured
+就这三步。
 
-- GitHub Release pipeline (macOS Intel + macOS Apple Silicon + Windows):
-  - [`.github/workflows/release.yml`](.github/workflows/release.yml)
-- Tauri updater artifacts generation (`latest.json`, `.sig`, installer bundles):
-  - [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)
-- In-app update check + install + relaunch:
-  - [`src/App.tsx`](src/App.tsx)
+## 主要功能
 
-## Deploy to GitHub (first time)
+### 1. 多账号管理
 
-1. Create a new GitHub repo.
-2. Initialize/push this project:
+- 添加账号：点击「添加账号」后打开授权流程
+- 授权成功后自动回收并加入列表
+- 删除账号：支持一键删除账号
 
-```bash
-git init
-git add .
-git commit -m "init: codex account switcher"
-git branch -M main
-git remote add origin https://github.com/Mrz-sakura/codex-tools.git
-git push -u origin main
-```
+### 2. 用量监控
 
-## Configure auto-updater (required)
+- 显示每个账号的 **5h** 和 **1week** 窗口
+- 显示 **已用百分比 + 剩余百分比**
+- 每 30 秒自动刷新，也可手动刷新
 
-### 1) Generate updater signing key
+### 3. 一键切换账号
 
-```bash
-npm run tauri signer generate -- -w ~/.tauri/codex-account-switcher.key
-```
+- 点「切换并启动」即可切到目标账号
+- 后台静默探测 Codex App 并启动
+- 找不到 App 时自动回退到 `codex app`
 
-Save:
-- private key file content (for GitHub Secret)
-- private key password
-- printed public key
+### 4. 添加账号不影响当前账号
 
-### 2) Set updater config
+- 添加新账号时会先备份当前登录状态
+- 添加结束后自动恢复，避免当前账号被替换
 
-Edit [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json):
+### 5. 计划识别与视觉区分
 
-- Set `"plugins.updater.active": true`
-- Replace `pubkey` with your generated public key.
-- Replace endpoint:
+- 自动识别 Free / Plus / Pro / Team 等计划
+- 不同计划有不同卡片边框风格
+- 当前账号会高亮显示
 
-```json
-"https://github.com/Mrz-sakura/codex-tools/releases/latest/download/latest.json"
-```
+### 6. 应用更新
 
-with your real repo URL.
+- 启动时可检查 GitHub Releases 新版本
+- 支持在应用内下载更新并重启
 
-### 3) Set GitHub Secrets
+## 打包与发布（简版）
 
-In `GitHub repo -> Settings -> Secrets and variables -> Actions`:
+本项目已配置 GitHub Actions 自动发布（mac 双架构 + Windows）。
 
-- `TAURI_SIGNING_PRIVATE_KEY` = private key file content
-- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` = key password
-
-Optional (recommended for production trust):
-- Apple code-sign + notarization secrets (for cleaner macOS install experience)
-- Windows code-sign certificate secrets (for SmartScreen reputation)
-
-## Build and publish downloadable packages
-
-### Option A: Tag push (recommended)
-
-1. Bump app version in [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json).
-2. Commit and push.
-3. Create and push tag:
+触发发布：
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.1.3
+git push origin v0.1.3
 ```
 
-The workflow builds and publishes release assets to GitHub Releases.
+查看：
+- Actions: <https://github.com/170-carry/codex-tools/actions>
+- Releases: <https://github.com/170-carry/codex-tools/releases>
 
-### Option B: Manual dispatch
+## 目录说明
 
-- Open Actions -> `Release Tauri App` -> `Run workflow`
-- Input `release_tag` (example: `v0.1.1`)
+- 前端：`src/`
+- Tauri / Rust：`src-tauri/`
+- 发布流程：`.github/workflows/release.yml`
 
-## How update detection works in app
-
-- App checks for updates at startup (and you can click `检查更新`).
-- It reads the latest metadata from your GitHub Release `latest.json` endpoint.
-- If newer version exists, app can download/install and relaunch automatically.
-
-## Notes
-
-- `latest.json` and `.sig` are generated only when updater artifacts are enabled and signing key secrets are set.
-- For updater correctness, release version and app version should stay consistent.
