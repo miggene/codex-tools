@@ -7,6 +7,14 @@
 
 仓库地址：<https://github.com/170-carry/codex-tools>
 
+## 解决codex-tools app 已损坏的方案
+
+> https://zhuanlan.zhihu.com/p/135948430
+
+> 省流:
+> sudo spctl  --master-disable
+> sudo xattr -r -d com.apple.quarantine /Applications/Codex\ Tools.app
+
 ## 快速启动（本地开发）
 
 ### 1) 环境准备
