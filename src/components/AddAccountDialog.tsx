@@ -22,11 +22,6 @@ type AddAccountDialogProps = {
   onClose: () => void;
 };
 
-const TAB_OPTIONS: Array<{ id: AddAccountTab; label: string }> = [
-  { id: "oauth", label: "OAuth 网页登录" },
-  { id: "upload", label: "上传文件" },
-];
-
 const folderPickerAttributes = {
   webkitdirectory: "",
   directory: "",
@@ -73,10 +68,14 @@ export function AddAccountDialog({
     startingAdd && !addFlowActive
       ? copy.addAccount.launchingDetail
       : copy.addAccount.watchingDetail;
+  const tabOptions: Array<{ id: AddAccountTab; label: string }> = [
+    { id: "oauth", label: copy.addAccount.oauthTab },
+    { id: "upload", label: copy.addAccount.uploadTab },
+  ];
 
   const selectedSummary = useMemo(() => {
     if (selectedFiles.length === 0) {
-      return "未选择任何 JSON 文件";
+      return copy.addAccount.uploadNoJsonFiles;
     }
 
     const firstPath = selectedFiles[0]?.webkitRelativePath || selectedFiles[0]?.name || "";
@@ -84,8 +83,8 @@ export function AddAccountDialog({
       return firstPath;
     }
 
-    return `${firstPath} 等 ${selectedFiles.length} 个文件`;
-  }, [selectedFiles]);
+    return copy.addAccount.uploadFileSummary(firstPath, selectedFiles.length);
+  }, [copy.addAccount, selectedFiles]);
 
   if (!open) {
     return null;
@@ -151,12 +150,12 @@ export function AddAccountDialog({
         className="settingsDialog addAuthDialog"
         role="dialog"
         aria-modal="true"
-        aria-label="添加账号"
+        aria-label={copy.addAccount.dialogAriaLabel}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="settingsHeader">
           <div>
-            <h2>添加账号</h2>
+            <h2>{copy.addAccount.dialogTitle}</h2>
           </div>
           <button
             className="iconButton ghost"
@@ -172,8 +171,8 @@ export function AddAccountDialog({
           </button>
         </div>
 
-        <div className="addAccountTabs" role="tablist" aria-label="添加账号方式">
-          {TAB_OPTIONS.map((tab) => {
+        <div className="addAccountTabs" role="tablist" aria-label={copy.addAccount.tabsAriaLabel}>
+          {tabOptions.map((tab) => {
             const active = tab.id === activeTab;
             return (
               <button
@@ -212,7 +211,7 @@ export function AddAccountDialog({
                 </>
               ) : (
                 <button className="primary addOauthPrimary" onClick={() => void onStartOauth()}>
-                  开始 OAuth 登录
+                  {copy.addAccount.oauthStart}
                 </button>
               )}
             </div>
@@ -246,19 +245,23 @@ export function AddAccountDialog({
                   onClick={() => fileInputRef.current?.click()}
                   disabled={actionLocked}
                 >
-                  选择文件
+                  {copy.addAccount.uploadChooseFiles}
                 </button>
                 <button
                   className="ghost"
                   onClick={() => folderInputRef.current?.click()}
                   disabled={actionLocked}
                 >
-                  选择文件夹
+                  {copy.addAccount.uploadChooseFolder}
                 </button>
               </div>
 
               <div className="addUploadSummary">
-                <strong>{selectedFiles.length > 0 ? `已选择 ${selectedFiles.length} 个 JSON 文件` : "未选择文件"}</strong>
+                <strong>
+                  {selectedFiles.length > 0
+                    ? copy.addAccount.uploadSelectedCount(selectedFiles.length)
+                    : copy.addAccount.uploadNoFiles}
+                </strong>
                 <p>{selectedSummary}</p>
               </div>
 
@@ -267,7 +270,9 @@ export function AddAccountDialog({
                 onClick={() => void handleImportFiles()}
                 disabled={actionLocked || selectedFiles.length === 0}
               >
-                {importingUpload || readingFiles ? "导入中..." : "开始导入"}
+                {importingUpload || readingFiles
+                  ? copy.addAccount.uploadImporting
+                  : copy.addAccount.uploadStartImport}
               </button>
             </div>
           </div>

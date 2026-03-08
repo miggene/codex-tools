@@ -4,6 +4,9 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
 import { useI18n } from "../i18n/I18nProvider";
+import { localizeBackendError } from "../i18n/backendErrors";
+import { DEFAULT_LOCALE } from "../i18n/catalog";
+import type { MessageCatalog } from "../i18n/catalog";
 import type {
   AccountSummary,
   ApiProxyStatus,
@@ -36,6 +39,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   syncOpencodeOpenaiAuth: false,
   restartEditorsOnSwitch: false,
   restartEditorTargets: [],
+  autoStartApiProxy: false,
+  locale: DEFAULT_LOCALE,
 };
 const DEFAULT_API_PROXY_STATUS: ApiProxyStatus = {
   running: false,
@@ -57,7 +62,12 @@ const DEFAULT_CLOUDFLARED_STATUS: CloudflaredStatus = {
   lastError: null,
 };
 
-function buildImportNotice(result: ImportAccountsResult, prefix: string): Notice {
+function buildImportNotice(
+  result: ImportAccountsResult,
+  prefix: string,
+  notices: MessageCatalog["notices"],
+  locale: string,
+): Notice {
   const successCount = result.importedCount + result.updatedCount;
   const failureCount = result.failures.length;
   const firstFailure = result.failures[0];
@@ -66,39 +76,43 @@ function buildImportNotice(result: ImportAccountsResult, prefix: string): Notice
     if (firstFailure) {
       return {
         type: "error",
-        message: `${prefix}失败：${firstFailure.source}，${firstFailure.error}`,
+        message: notices.importFailedWithSource(prefix, firstFailure.source, firstFailure.error),
       };
     }
     return {
       type: "error",
-      message: `${prefix}失败：没有可导入的有效 JSON。`,
+      message: notices.importFailedNoValidJson(prefix),
     };
   }
 
   const segments: string[] = [];
   if (result.importedCount > 0) {
-    segments.push(`新增 ${result.importedCount} 个`);
+    segments.push(notices.importSummaryAdded(result.importedCount));
   }
   if (result.updatedCount > 0) {
-    segments.push(`更新 ${result.updatedCount} 个`);
+    segments.push(notices.importSummaryUpdated(result.updatedCount));
   }
   if (failureCount > 0) {
-    segments.push(`失败 ${failureCount} 个`);
+    segments.push(notices.importSummaryFailed(failureCount));
   }
 
   const suffix =
     failureCount > 0 && firstFailure
-      ? ` 首个失败：${firstFailure.source}，${firstFailure.error}`
+      ? notices.importSummaryFirstFailure(firstFailure.source, firstFailure.error)
       : "";
+  const listFormatter = new Intl.ListFormat(locale, {
+    style: "short",
+    type: "conjunction",
+  });
 
   return {
     type: failureCount > 0 ? "info" : "ok",
-    message: `${prefix}完成：${segments.join("，")}。${suffix}`.trim(),
+    message: notices.importSummaryDone(prefix, listFormatter.format(segments), suffix),
   };
 }
 
 export function useCodexController() {
-  const { copy } = useI18n();
+  const { copy, locale } = useI18n();
   const [accounts, setAccounts] = useState<AccountSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -136,10 +150,51 @@ export function useCodexController() {
   );
   const sortedAccounts = useMemo(() => sortAccountsByRemaining(accounts), [accounts]);
 
+  const localizeError = useCallback(
+    (error: string) => localizeBackendError(error, locale),
+    [locale],
+  );
+
+  const localizeAccounts = useCallback(
+    (items: AccountSummary[]) =>
+      items.map((account) => ({
+        ...account,
+        usageError: account.usageError ? localizeError(account.usageError) : null,
+      })),
+    [localizeError],
+  );
+
+  const localizeApiProxyStatus = useCallback(
+    (status: ApiProxyStatus): ApiProxyStatus => ({
+      ...status,
+      lastError: status.lastError ? localizeError(status.lastError) : null,
+    }),
+    [localizeError],
+  );
+
+  const localizeCloudflaredStatus = useCallback(
+    (status: CloudflaredStatus): CloudflaredStatus => ({
+      ...status,
+      lastError: status.lastError ? localizeError(status.lastError) : null,
+    }),
+    [localizeError],
+  );
+
+  const localizeImportResult = useCallback(
+    (result: ImportAccountsResult): ImportAccountsResult => ({
+      ...result,
+      failures: result.failures.map((failure) => ({
+        ...failure,
+        error: localizeError(failure.error),
+      })),
+    }),
+    [localizeError],
+  );
+
   const loadAccounts = useCallback(async () => {
     const data = await invoke<AccountSummary[]>("list_accounts");
-    setAccounts(data);
-  }, []);
+    setAccounts(localizeAccounts(data));
+  }, [localizeAccounts]);
 
   const loadSettings = useCallback(async () => {
     const data = await invoke<AppSettings>("get_app_settings");
@@ -158,20 +213,20 @@ export function useCodexController() {
   const loadApiProxyStatus = useCallback(async () => {
     try {
       const data = await invoke<ApiProxyStatus>("get_api_proxy_status");
-      setApiProxyStatus(data);
+      setApiProxyStatus(localizeApiProxyStatus(data));
     } catch {
       setApiProxyStatus(DEFAULT_API_PROXY_STATUS);
     }
-  }, []);
+  }, [localizeApiProxyStatus]);
 
   const loadCloudflaredStatus = useCallback(async () => {
     try {
       const data = await invoke<CloudflaredStatus>("get_cloudflared_status");
-      setCloudflaredStatus(data);
+      setCloudflaredStatus(localizeCloudflaredStatus(data));
     } catch {
       setCloudflaredStatus(DEFAULT_CLOUDFLARED_STATUS);
     }
-  }, []);
+  }, [localizeCloudflaredStatus]);
 
   const updateSettings = useCallback(
     async (patch: Partial<AppSettings>, options?: UpdateSettingsOptions) => {
@@ -188,7 +243,10 @@ export function useCodexController() {
             setNotice({ type: "ok", message: copy.notices.settingsUpdated });
           }
         } catch (error) {
-          setNotice({ type: "error", message: copy.notices.updateSettingsFailed(String(error)) });
+          setNotice({
+            type: "error",
+            message: copy.notices.updateSettingsFailed(localizeError(String(error))),
+          });
         } finally {
           if (shouldLockUi) {
             setSavingSettings(false);
@@ -203,7 +261,7 @@ export function useCodexController() {
       );
       return run;
     },
-    [copy.notices],
+    [copy.notices, localizeError],
   );
 
   const refreshUsage = useCallback(async (quiet = false) => {
@@ -214,28 +272,34 @@ export function useCodexController() {
       const data = await invoke<AccountSummary[]>("refresh_all_usage", {
         forceAuthRefresh: !quiet,
       });
-      setAccounts(data);
+      setAccounts(localizeAccounts(data));
       if (!quiet) {
         setNotice({ type: "ok", message: copy.notices.usageRefreshed });
       }
     } catch (error) {
       if (!quiet) {
-        setNotice({ type: "error", message: copy.notices.refreshFailed(String(error)) });
+        setNotice({
+          type: "error",
+          message: copy.notices.refreshFailed(localizeError(String(error))),
+        });
       }
     } finally {
       if (!quiet) {
         setRefreshing(false);
       }
     }
-  }, [copy.notices]);
+  }, [copy.notices, localizeAccounts, localizeError]);
 
   const restoreAuthAfterAddFlow = useCallback(async () => {
     try {
       await invoke<boolean>("restore_auth_after_add_flow");
     } catch (error) {
-      setNotice({ type: "error", message: copy.notices.restoreAuthFailed(String(error)) });
+      setNotice({
+        type: "error",
+        message: copy.notices.restoreAuthFailed(localizeError(String(error))),
+      });
     }
-  }, [copy.notices]);
+  }, [copy.notices, localizeError]);
 
   const applyImportResult = useCallback(
     async (result: ImportAccountsResult, prefix: string) => {
@@ -248,9 +312,9 @@ export function useCodexController() {
         setAddDialogOpen(false);
       }
 
-      setNotice(buildImportNotice(result, prefix));
+      setNotice(buildImportNotice(result, prefix, copy.notices, locale));
     },
-    [loadAccounts],
+    [copy.notices, loadAccounts, locale],
   );
 
   useEffect(() => {
@@ -323,13 +387,16 @@ export function useCodexController() {
         setUpdateProgress(copy.notices.updateInstalling);
         await relaunch();
       } catch (error) {
-        setNotice({ type: "error", message: copy.notices.updateInstallFailed(String(error)) });
+        setNotice({
+          type: "error",
+          message: copy.notices.updateInstallFailed(localizeError(String(error))),
+        });
         setUpdateProgress(null);
       } finally {
         setInstallingUpdate(false);
       }
     },
-    [copy.notices],
+    [copy.notices, localizeError],
   );
 
   const checkForAppUpdate = useCallback(
@@ -363,7 +430,10 @@ export function useCodexController() {
         }
       } catch (error) {
         if (!quiet) {
-          setNotice({ type: "error", message: copy.notices.updateCheckFailed(String(error)) });
+          setNotice({
+            type: "error",
+            message: copy.notices.updateCheckFailed(localizeError(String(error))),
+          });
         }
       } finally {
         if (!quiet) {
@@ -371,16 +441,19 @@ export function useCodexController() {
         }
       }
     },
-    [copy.notices, installPendingUpdate],
+    [copy.notices, installPendingUpdate, localizeError],
   );
 
   const openManualDownloadPage = useCallback(async () => {
     try {
       await invoke("open_external_url", { url: MANUAL_DOWNLOAD_URL });
     } catch (error) {
-      setNotice({ type: "error", message: copy.notices.openManualDownloadFailed(String(error)) });
+      setNotice({
+        type: "error",
+        message: copy.notices.openManualDownloadFailed(localizeError(String(error))),
+      });
     }
-  }, [copy.notices]);
+  }, [copy.notices, localizeError]);
 
   const closeUpdateDialog = useCallback(() => {
     setUpdateDialogOpen(false);
@@ -429,6 +502,16 @@ export function useCodexController() {
     loadSettings,
     refreshUsage,
   ]);
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+
+    void loadAccounts();
+    void loadApiProxyStatus();
+    void loadCloudflaredStatus();
+  }, [loadAccounts, loadApiProxyStatus, loadCloudflaredStatus, loading, locale]);
 
   useEffect(() => {
     if (!apiProxyStatus.running) {
@@ -520,7 +603,10 @@ export function useCodexController() {
         await restoreAuthAfterAddFlow();
         if (!cancelled) {
           setAddFlow(null);
-          setNotice({ type: "error", message: copy.notices.addAccountAutoImportFailed(String(error)) });
+          setNotice({
+            type: "error",
+            message: copy.notices.addAccountAutoImportFailed(localizeError(String(error))),
+          });
         }
       } finally {
         inFlight = false;
@@ -546,7 +632,14 @@ export function useCodexController() {
       clearInterval(timer);
       clearTimeout(timeoutTimer);
     };
-  }, [addFlow, copy.notices, loadAccounts, refreshUsage, restoreAuthAfterAddFlow]);
+  }, [
+    addFlow,
+    copy.notices,
+    loadAccounts,
+    localizeError,
+    refreshUsage,
+    restoreAuthAfterAddFlow,
+  ]);
 
   const onStartAddAccount = useCallback(async () => {
     if (addFlow || startingAdd || importingUpload) {
@@ -570,11 +663,21 @@ export function useCodexController() {
         baselineFingerprint: baseline.fingerprint,
       });
     } catch (error) {
-      setNotice({ type: "error", message: copy.notices.startLoginFlowFailed(String(error)) });
+      setNotice({
+        type: "error",
+        message: copy.notices.startLoginFlowFailed(localizeError(String(error))),
+      });
     } finally {
       setStartingAdd(false);
     }
-  }, [addFlow, copy.notices, importingUpload, restoreAuthAfterAddFlow, startingAdd]);
+  }, [
+    addFlow,
+    copy.notices,
+    importingUpload,
+    localizeError,
+    restoreAuthAfterAddFlow,
+    startingAdd,
+  ]);
 
   const onOpenAddDialog = useCallback(() => {
     setAddDialogOpen(true);
@@ -596,7 +699,7 @@ export function useCodexController() {
   const onImportAuthFiles = useCallback(
     async (items: AuthJsonImportInput[]) => {
       if (items.length === 0) {
-        setNotice({ type: "error", message: "请选择要导入的 JSON 文件或文件夹。" });
+        setNotice({ type: "error", message: copy.notices.importFilesRequired });
         return;
       }
 
@@ -605,14 +708,20 @@ export function useCodexController() {
         const result = await invoke<ImportAccountsResult>("import_auth_json_accounts", {
           items,
         });
-        await applyImportResult(result, "文件导入");
+        await applyImportResult(localizeImportResult(result), copy.notices.fileImportPrefix);
       } catch (error) {
-        setNotice({ type: "error", message: `文件导入失败：${String(error)}` });
+        setNotice({
+          type: "error",
+          message: copy.notices.importFailedPlain(
+            copy.notices.fileImportPrefix,
+            localizeError(String(error)),
+          ),
+        });
       } finally {
         setImportingUpload(false);
       }
     },
-    [applyImportResult],
+    [applyImportResult, copy.notices, localizeError, localizeImportResult],
   );
 
   const onStartApiProxy = useCallback(async (port?: number | null) => {
@@ -625,15 +734,24 @@ export function useCodexController() {
       const status = await invoke<ApiProxyStatus>("start_api_proxy", {
         port: port ?? null,
       });
-      setApiProxyStatus(status);
-      const target = status.port ? `127.0.0.1:${status.port}` : "本地端口";
-      setNotice({ type: "ok", message: `API 反代已启动：${target}` });
+      setApiProxyStatus(localizeApiProxyStatus(status));
+      const target = status.port ? `127.0.0.1:${status.port}` : copy.notices.proxyLocalTargetFallback;
+      setNotice({ type: "ok", message: copy.notices.proxyStarted(target) });
     } catch (error) {
-      setNotice({ type: "error", message: `启动 API 反代失败：${String(error)}` });
+      setNotice({
+        type: "error",
+        message: copy.notices.proxyStartFailed(localizeError(String(error))),
+      });
     } finally {
       setStartingApiProxy(false);
     }
-  }, [apiProxyStatus.running, startingApiProxy]);
+  }, [
+    apiProxyStatus.running,
+    copy.notices,
+    localizeApiProxyStatus,
+    localizeError,
+    startingApiProxy,
+  ]);
 
   const onStopApiProxy = useCallback(async () => {
     if (stoppingApiProxy || !apiProxyStatus.running) {
@@ -643,14 +761,23 @@ export function useCodexController() {
     setStoppingApiProxy(true);
     try {
       const status = await invoke<ApiProxyStatus>("stop_api_proxy");
-      setApiProxyStatus(status);
-      setNotice({ type: "ok", message: "API 反代已停止" });
+      setApiProxyStatus(localizeApiProxyStatus(status));
+      setNotice({ type: "ok", message: copy.notices.proxyStopped });
     } catch (error) {
-      setNotice({ type: "error", message: `停止 API 反代失败：${String(error)}` });
+      setNotice({
+        type: "error",
+        message: copy.notices.proxyStopFailed(localizeError(String(error))),
+      });
     } finally {
       setStoppingApiProxy(false);
     }
-  }, [apiProxyStatus.running, stoppingApiProxy]);
+  }, [
+    apiProxyStatus.running,
+    copy.notices,
+    localizeApiProxyStatus,
+    localizeError,
+    stoppingApiProxy,
+  ]);
 
   const onRefreshApiProxyKey = useCallback(async () => {
     if (refreshingApiProxyKey) {
@@ -660,14 +787,17 @@ export function useCodexController() {
     setRefreshingApiProxyKey(true);
     try {
       const status = await invoke<ApiProxyStatus>("refresh_api_proxy_key");
-      setApiProxyStatus(status);
-      setNotice({ type: "ok", message: "API Key 已刷新" });
+      setApiProxyStatus(localizeApiProxyStatus(status));
+      setNotice({ type: "ok", message: copy.notices.proxyKeyRefreshed });
     } catch (error) {
-      setNotice({ type: "error", message: `刷新 API Key 失败：${String(error)}` });
+      setNotice({
+        type: "error",
+        message: copy.notices.proxyKeyRefreshFailed(localizeError(String(error))),
+      });
     } finally {
       setRefreshingApiProxyKey(false);
     }
-  }, [refreshingApiProxyKey]);
+  }, [copy.notices, localizeApiProxyStatus, localizeError, refreshingApiProxyKey]);
 
   const onInstallCloudflared = useCallback(async () => {
     if (installingCloudflared) {
@@ -677,14 +807,17 @@ export function useCodexController() {
     setInstallingCloudflared(true);
     try {
       const status = await invoke<CloudflaredStatus>("install_cloudflared");
-      setCloudflaredStatus(status);
-      setNotice({ type: "ok", message: "cloudflared 安装完成" });
+      setCloudflaredStatus(localizeCloudflaredStatus(status));
+      setNotice({ type: "ok", message: copy.notices.cloudflaredInstalled });
     } catch (error) {
-      setNotice({ type: "error", message: `安装 cloudflared 失败：${String(error)}` });
+      setNotice({
+        type: "error",
+        message: copy.notices.cloudflaredInstallFailed(localizeError(String(error))),
+      });
     } finally {
       setInstallingCloudflared(false);
     }
-  }, [installingCloudflared]);
+  }, [copy.notices, installingCloudflared, localizeCloudflaredStatus, localizeError]);
 
   const onStartCloudflared = useCallback(async (input: StartCloudflaredTunnelInput) => {
     if (startingCloudflared || cloudflaredStatus.running) {
@@ -694,15 +827,24 @@ export function useCodexController() {
     setStartingCloudflared(true);
     try {
       const status = await invoke<CloudflaredStatus>("start_cloudflared_tunnel", { input });
-      setCloudflaredStatus(status);
-      const target = status.publicUrl ?? "Cloudflare 公网地址";
-      setNotice({ type: "ok", message: `公网隧道已启动：${target}` });
+      setCloudflaredStatus(localizeCloudflaredStatus(status));
+      const target = status.publicUrl ?? copy.notices.cloudflaredPublicUrlFallback;
+      setNotice({ type: "ok", message: copy.notices.cloudflaredStarted(target) });
     } catch (error) {
-      setNotice({ type: "error", message: `启动 cloudflared 公网访问失败：${String(error)}` });
+      setNotice({
+        type: "error",
+        message: copy.notices.cloudflaredStartFailed(localizeError(String(error))),
+      });
     } finally {
       setStartingCloudflared(false);
     }
-  }, [cloudflaredStatus.running, startingCloudflared]);
+  }, [
+    cloudflaredStatus.running,
+    copy.notices,
+    localizeCloudflaredStatus,
+    localizeError,
+    startingCloudflared,
+  ]);
 
   const onStopCloudflared = useCallback(async () => {
     if (stoppingCloudflared || !cloudflaredStatus.running) {
@@ -712,14 +854,23 @@ export function useCodexController() {
     setStoppingCloudflared(true);
     try {
       const status = await invoke<CloudflaredStatus>("stop_cloudflared_tunnel");
-      setCloudflaredStatus(status);
-      setNotice({ type: "ok", message: "cloudflared 公网访问已停止" });
+      setCloudflaredStatus(localizeCloudflaredStatus(status));
+      setNotice({ type: "ok", message: copy.notices.cloudflaredStopped });
     } catch (error) {
-      setNotice({ type: "error", message: `停止 cloudflared 公网访问失败：${String(error)}` });
+      setNotice({
+        type: "error",
+        message: copy.notices.cloudflaredStopFailed(localizeError(String(error))),
+      });
     } finally {
       setStoppingCloudflared(false);
     }
-  }, [cloudflaredStatus.running, stoppingCloudflared]);
+  }, [
+    cloudflaredStatus.running,
+    copy.notices,
+    localizeCloudflaredStatus,
+    localizeError,
+    stoppingCloudflared,
+  ]);
 
   const onDelete = useCallback(async (account: AccountSummary) => {
     if (pendingDeleteId !== account.id) {
@@ -746,9 +897,12 @@ export function useCodexController() {
       setAccounts((prev) => prev.filter((item) => item.id !== account.id));
       setNotice({ type: "ok", message: copy.notices.accountDeleted });
     } catch (error) {
-      setNotice({ type: "error", message: copy.notices.deleteFailed(String(error)) });
+      setNotice({
+        type: "error",
+        message: copy.notices.deleteFailed(localizeError(String(error))),
+      });
     }
-  }, [copy.notices, pendingDeleteId]);
+  }, [copy.notices, localizeError, pendingDeleteId]);
 
   const onSwitch = useCallback(
     async (account: AccountSummary) => {
@@ -779,7 +933,10 @@ export function useCodexController() {
           if (result.opencodeSyncError) {
             baseNotice = {
               type: "error",
-              message: copy.notices.opencodeSyncFailed(baseNotice.message, result.opencodeSyncError),
+              message: copy.notices.opencodeSyncFailed(
+                baseNotice.message,
+                localizeError(result.opencodeSyncError),
+              ),
             };
           } else if (result.opencodeSynced) {
             baseNotice = {
@@ -793,7 +950,10 @@ export function useCodexController() {
           if (result.editorRestartError) {
             baseNotice = {
               type: "error",
-              message: copy.notices.editorRestartFailed(baseNotice.message, result.editorRestartError),
+              message: copy.notices.editorRestartFailed(
+                baseNotice.message,
+                localizeError(result.editorRestartError),
+              ),
             };
           } else if (result.restartedEditorApps.length > 0) {
             const restartedLabels = result.restartedEditorApps
@@ -813,7 +973,10 @@ export function useCodexController() {
 
         setNotice(baseNotice);
       } catch (error) {
-        setNotice({ type: "error", message: copy.notices.switchFailed(String(error)) });
+        setNotice({
+          type: "error",
+          message: copy.notices.switchFailed(localizeError(String(error))),
+        });
       } finally {
         setSwitchingId(null);
       }
@@ -822,6 +985,7 @@ export function useCodexController() {
       copy.editorAppLabels,
       copy.notices,
       loadAccounts,
+      localizeError,
       settings.launchCodexAfterSwitch,
       settings.syncOpencodeOpenaiAuth,
       settings.restartEditorsOnSwitch,

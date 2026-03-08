@@ -6,6 +6,7 @@ use tauri::Manager;
 
 use crate::account_service::refresh_all_usage_internal;
 use crate::auth::current_auth_account_id;
+use crate::i18n;
 use crate::models::AccountSummary;
 use crate::models::TrayUsageDisplayMode;
 use crate::models::UsageWindow;
@@ -49,14 +50,6 @@ fn mode_percent(mode: TrayUsageDisplayMode, window: Option<&UsageWindow>) -> Opt
     }
 }
 
-fn usage_mode_label(mode: TrayUsageDisplayMode) -> &'static str {
-    match mode {
-        TrayUsageDisplayMode::Used => "已用",
-        TrayUsageDisplayMode::Remaining => "剩余",
-        TrayUsageDisplayMode::Hidden => "不展示",
-    }
-}
-
 fn read_tray_usage_mode(app: &AppHandle) -> TrayUsageDisplayMode {
     load_store(app)
         .map(|store| store.settings.tray_usage_display_mode)
@@ -64,8 +57,16 @@ fn read_tray_usage_mode(app: &AppHandle) -> TrayUsageDisplayMode {
 }
 
 #[cfg(target_os = "macos")]
-fn tray_account_usage_line(account: &AccountSummary, mode: TrayUsageDisplayMode) -> String {
-    let current_prefix = if account.is_current { "[当前] " } else { "" };
+fn tray_account_usage_line(
+    account: &AccountSummary,
+    mode: TrayUsageDisplayMode,
+    locale: crate::models::AppLocale,
+) -> String {
+    let current_prefix = if account.is_current {
+        i18n::tray_current_prefix(locale)
+    } else {
+        String::new()
+    };
     if mode == TrayUsageDisplayMode::Hidden {
         return format!("{current_prefix}{}", account.label);
     }
@@ -85,7 +86,7 @@ fn tray_account_usage_line(account: &AccountSummary, mode: TrayUsageDisplayMode)
             .and_then(|usage| usage.one_week.as_ref()),
     ));
 
-    let mode_label = usage_mode_label(mode);
+    let mode_label = i18n::tray_usage_mode_label(locale, mode);
     format!(
         "{current_prefix}{} | 5h{mode_label} {five_hour} | 1week{mode_label} {one_week}",
         account.label
@@ -120,27 +121,43 @@ fn build_macos_tray_title(accounts: &[AccountSummary], mode: TrayUsageDisplayMod
 }
 
 #[cfg(target_os = "macos")]
-fn build_macos_tray_tooltip(accounts: &[AccountSummary], mode: TrayUsageDisplayMode) -> String {
-    let mut lines = vec!["Codex Tools 用量".to_string()];
-    lines.push(format!("显示模式: {}", usage_mode_label(mode)));
+fn build_macos_tray_tooltip(
+    accounts: &[AccountSummary],
+    mode: TrayUsageDisplayMode,
+    locale: crate::models::AppLocale,
+) -> String {
+    let mut lines = vec![i18n::tray_usage_heading(locale).to_string()];
+    lines.push(format!(
+        "{}: {}",
+        i18n::tray_display_mode_label(locale),
+        i18n::tray_usage_mode_label(locale, mode)
+    ));
 
     if let Some(current) = accounts.iter().find(|account| account.is_current) {
-        lines.push(format!("当前: {}", tray_account_usage_line(current, mode)));
+        lines.push(format!(
+            "{}: {}",
+            i18n::tray_current_label(locale),
+            tray_account_usage_line(current, mode, locale)
+        ));
     } else {
-        lines.push("当前: 未检测到正在使用的账号".to_string());
+        lines.push(format!(
+            "{}: {}",
+            i18n::tray_current_label(locale),
+            i18n::tray_no_current(locale)
+        ));
     }
 
     if accounts.is_empty() {
-        lines.push("暂无账号，请先在主窗口添加账号".to_string());
+        lines.push(i18n::tray_no_accounts(locale).to_string());
         return lines.join("\n");
     }
 
-    lines.push(format!("全部账号（{}）:", accounts.len()));
+    lines.push(i18n::tray_all_accounts(locale, accounts.len()));
     for account in accounts.iter().take(8) {
-        lines.push(format!("• {}", tray_account_usage_line(account, mode)));
+        lines.push(format!("• {}", tray_account_usage_line(account, mode, locale)));
     }
     if accounts.len() > 8 {
-        lines.push(format!("… 还有 {} 个账号", accounts.len() - 8));
+        lines.push(i18n::tray_more_accounts(locale, accounts.len() - 8));
     }
 
     lines.join("\n")
@@ -156,18 +173,31 @@ fn build_macos_tray_menu(
     use tauri::menu::MenuItem;
     use tauri::menu::PredefinedMenuItem;
 
+    let locale = i18n::app_locale(app);
     let menu = Menu::new(app).map_err(|e| format!("创建状态栏菜单失败: {e}"))?;
 
-    let header_text = format!("Codex Tools 用量（{}）", usage_mode_label(mode));
+    let header_text = format!(
+        "{} ({})",
+        i18n::tray_usage_heading(locale),
+        i18n::tray_usage_mode_label(locale, mode)
+    );
     let header = MenuItem::with_id(app, "tray_header", header_text, false, None::<&str>)
         .map_err(|e| format!("创建状态栏菜单项失败: {e}"))?;
     menu.append(&header)
         .map_err(|e| format!("写入状态栏菜单失败: {e}"))?;
 
     let current_line = if let Some(current) = accounts.iter().find(|account| account.is_current) {
-        format!("当前账号: {}", tray_account_usage_line(current, mode))
+        format!(
+            "{}: {}",
+            i18n::tray_current_account_label(locale),
+            tray_account_usage_line(current, mode, locale)
+        )
     } else {
-        "当前账号: 未检测到".to_string()
+        format!(
+            "{}: {}",
+            i18n::tray_current_account_label(locale),
+            i18n::tray_no_current(locale)
+        )
     };
     let current_item = MenuItem::with_id(
         app,
@@ -189,7 +219,7 @@ fn build_macos_tray_menu(
         let empty = MenuItem::with_id(
             app,
             "tray_accounts_empty",
-            "暂无账号（请在主窗口添加）",
+            i18n::tray_empty_accounts(locale),
             false,
             None::<&str>,
         )
@@ -202,7 +232,7 @@ fn build_macos_tray_menu(
             let line_item = MenuItem::with_id(
                 app,
                 id,
-                tray_account_usage_line(account, mode),
+                tray_account_usage_line(account, mode, locale),
                 false,
                 None::<&str>,
             )
@@ -220,7 +250,7 @@ fn build_macos_tray_menu(
     let refresh = MenuItem::with_id(
         app,
         TRAY_MENU_REFRESH_ID,
-        "立即刷新用量",
+        i18n::tray_refresh_now(locale),
         true,
         None::<&str>,
     )
@@ -228,12 +258,12 @@ fn build_macos_tray_menu(
     let open = MenuItem::with_id(
         app,
         TRAY_MENU_OPEN_ID,
-        "打开 Codex Tools",
+        i18n::tray_open_app(locale),
         true,
         None::<&str>,
     )
     .map_err(|e| format!("创建状态栏菜单项失败: {e}"))?;
-    let quit = MenuItem::with_id(app, TRAY_MENU_QUIT_ID, "退出", true, None::<&str>)
+    let quit = MenuItem::with_id(app, TRAY_MENU_QUIT_ID, i18n::tray_quit(locale), true, None::<&str>)
         .map_err(|e| format!("创建状态栏菜单项失败: {e}"))?;
 
     menu.append(&refresh)
@@ -252,6 +282,7 @@ pub(crate) fn update_macos_tray_snapshot(
     accounts: &[AccountSummary],
 ) -> Result<(), String> {
     let mode = read_tray_usage_mode(app);
+    let locale = i18n::app_locale(app);
     let tray = app
         .tray_by_id(TRAY_ID)
         .ok_or_else(|| "状态栏尚未初始化".to_string())?;
@@ -261,7 +292,7 @@ pub(crate) fn update_macos_tray_snapshot(
         .map_err(|e| format!("更新状态栏菜单失败: {e}"))?;
     tray.set_title(Some(build_macos_tray_title(accounts, mode)))
         .map_err(|e| format!("更新状态栏标题失败: {e}"))?;
-    tray.set_tooltip(Some(build_macos_tray_tooltip(accounts, mode)))
+    tray.set_tooltip(Some(build_macos_tray_tooltip(accounts, mode, locale)))
         .map_err(|e| format!("更新状态栏提示失败: {e}"))?;
     Ok(())
 }
@@ -309,6 +340,7 @@ pub(crate) fn setup_macos_status_bar(app: &AppHandle) -> Result<(), String> {
     use tauri::tray::TrayIconBuilder;
 
     let mode = read_tray_usage_mode(app);
+    let locale = i18n::app_locale(app);
     let store = load_store(app)?;
     let current_account_id = current_auth_account_id();
     let summaries: Vec<AccountSummary> = store
@@ -323,7 +355,7 @@ pub(crate) fn setup_macos_status_bar(app: &AppHandle) -> Result<(), String> {
         .icon(STATUS_BAR_ICON)
         .icon_as_template(true)
         .title(build_macos_tray_title(&summaries, mode))
-        .tooltip(build_macos_tray_tooltip(&summaries, mode))
+        .tooltip(build_macos_tray_tooltip(&summaries, mode, locale))
         .show_menu_on_left_click(true)
         .build(app)
         .map_err(|e| format!("创建 macOS 状态栏失败: {e}"))?;
@@ -361,14 +393,7 @@ pub(crate) fn handle_status_bar_menu_event(app: &AppHandle, event: tauri::menu::
         }
 
         if id == TRAY_MENU_OPEN_ID {
-            if let Err(err) = app.set_dock_visibility(true) {
-                log::warn!("恢复 Dock 图标失败: {err}");
-            }
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
+            crate::restore_main_window(app);
             return;
         }
 

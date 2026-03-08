@@ -3,8 +3,10 @@ mod auth;
 mod cli;
 mod cloudflared_service;
 mod editor_apps;
+mod i18n;
 mod models;
 mod opencode;
+pub mod proxy_daemon;
 mod proxy_service;
 mod settings_service;
 mod state;
@@ -119,6 +121,8 @@ async fn update_app_settings(
     let settings =
         settings_service::update_app_settings_internal(&app, state.inner(), patch).await?;
     let _ = tray::refresh_macos_tray_snapshot(&app);
+    #[cfg(target_os = "macos")]
+    let _ = setup_macos_app_menu(&app);
     Ok(settings)
 }
 
@@ -421,16 +425,52 @@ fn handle_window_close_to_background(window: &tauri::Window, event: &WindowEvent
     }
 }
 
+pub(crate) fn restore_main_window(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    if let Err(err) = app.set_dock_visibility(true) {
+        log::warn!("恢复 Dock 图标失败: {err}");
+    }
+
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+async fn auto_start_api_proxy_if_enabled(app: AppHandle) {
+    let state = app.state::<AppState>();
+    let should_auto_start = {
+        let _guard = state.store_lock.lock().await;
+        match store::load_store(&app) {
+            Ok(store) => store.settings.auto_start_api_proxy,
+            Err(err) => {
+                log::warn!("读取自动启动 API 反代设置失败: {err}");
+                false
+            }
+        }
+    };
+
+    if !should_auto_start {
+        return;
+    }
+
+    if let Err(err) = proxy_service::start_api_proxy_internal(&app, state.inner(), None).await {
+        log::warn!("应用启动时自动启动 API 反代失败: {err}");
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn setup_macos_app_menu(app: &AppHandle) -> Result<(), String> {
     use tauri::menu::Menu;
     use tauri::menu::MenuItem;
 
+    let locale = i18n::app_locale(app);
     let menu = Menu::default(app).map_err(|e| format!("创建默认应用菜单失败: {e}"))?;
     let check_update = MenuItem::with_id(
         app,
         tray::APP_MENU_CHECK_UPDATE_ID,
-        "检查更新…",
+        i18n::app_menu_check_update(locale),
         true,
         None::<&str>,
     )
@@ -438,7 +478,7 @@ fn setup_macos_app_menu(app: &AppHandle) -> Result<(), String> {
     let open_settings = MenuItem::with_id(
         app,
         tray::APP_MENU_OPEN_SETTINGS_ID,
-        "设置…",
+        i18n::app_menu_settings(locale),
         true,
         None::<&str>,
     )
@@ -466,7 +506,8 @@ fn setup_macos_app_menu(app: &AppHandle) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
+        .manage(AppState::default())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
@@ -496,7 +537,6 @@ pub fn run() {
             tray::setup_macos_status_bar(app.handle())?;
             Ok(())
         })
-        .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             list_accounts,
             import_current_auth_account,
@@ -521,6 +561,20 @@ pub fn run() {
             start_cloudflared_tunnel,
             stop_cloudflared_tunnel
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| match event {
+        tauri::RunEvent::Ready => {
+            let app_handle = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                auto_start_api_proxy_if_enabled(app_handle).await;
+            });
+        }
+        #[cfg(target_os = "macos")]
+        tauri::RunEvent::Reopen { .. } => {
+            restore_main_window(app_handle);
+        }
+        _ => {}
+    });
 }

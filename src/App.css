@@ -994,6 +994,24 @@ button.danger {
   flex-wrap: wrap;
 }
 
+.proxyHeroControlGroup {
+  display: grid;
+  gap: 12px;
+  justify-items: end;
+}
+
+.proxyAutoStartRow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.proxyAutoStartLabel {
+  color: var(--subtle);
+  font: 600 0.84rem/1.2 "IBM Plex Sans", sans-serif;
+}
+
 .proxyPortField {
   display: flex;
   align-items: center;
@@ -1924,6 +1942,15 @@ button.bottomDockButton.isActive:focus-visible {
   .proxyHeroActions {
     justify-content: flex-start;
     align-items: stretch;
+  }
+
+  .proxyHeroControlGroup {
+    justify-items: start;
+  }
+
+  .proxyAutoStartRow {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .proxyPortField,

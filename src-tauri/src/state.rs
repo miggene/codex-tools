@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::process::Child;
-use std::sync::RwLock;
 use std::sync::Arc;
+use std::sync::RwLock;
 
 use serde_json::Value;
 use tokio::sync::oneshot;
@@ -44,7 +44,7 @@ pub(crate) struct CloudflaredRuntimeHandle {
 /// - `api_proxy` 维护本地 API 反代服务的生命周期与状态。
 /// - `cloudflared` 维护公网隧道进程与当前状态。
 pub(crate) struct AppState {
-    pub(crate) store_lock: Mutex<()>,
+    pub(crate) store_lock: Arc<Mutex<()>>,
     pub(crate) add_flow_auth_backup: Mutex<Option<Option<Value>>>,
     pub(crate) api_proxy: Mutex<Option<ApiProxyRuntimeHandle>>,
     pub(crate) cloudflared: Mutex<Option<CloudflaredRuntimeHandle>>,
@@ -53,7 +53,7 @@ pub(crate) struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            store_lock: Mutex::new(()),
+            store_lock: Arc::new(Mutex::new(())),
             add_flow_auth_backup: Mutex::new(None),
             api_proxy: Mutex::new(None),
             cloudflared: Mutex::new(None),

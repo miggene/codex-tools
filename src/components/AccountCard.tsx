@@ -49,6 +49,7 @@ export function AccountCard({
   onDelete,
 }: AccountCardProps) {
   const { copy, locale } = useI18n();
+  const labelSeparator = locale === "zh-CN" || locale === "ja-JP" ? "：" : ": ";
   const usage = account.usage;
   const fiveHour = usage?.fiveHour ?? null;
   const oneWeek = usage?.oneWeek ?? null;
@@ -122,7 +123,9 @@ export function AccountCard({
           <div className="barFill hot" style={{ width: toProgressWidth(fiveHour?.usedPercent) }} />
         </div>
         <small>
-          {copy.accountCard.resetAt}：{formatResetAt(fiveHour?.resetAt, locale)}
+          {copy.accountCard.resetAt}
+          {labelSeparator}
+          {formatResetAt(fiveHour?.resetAt, locale)}
         </small>
       </div>
 
@@ -149,7 +152,9 @@ export function AccountCard({
           <div className="barFill cool" style={{ width: toProgressWidth(oneWeek?.usedPercent) }} />
         </div>
         <small>
-          {copy.accountCard.resetAt}：{formatResetAt(oneWeek?.resetAt, locale)}
+          {copy.accountCard.resetAt}
+          {labelSeparator}
+          {formatResetAt(oneWeek?.resetAt, locale)}
         </small>
       </div>
 

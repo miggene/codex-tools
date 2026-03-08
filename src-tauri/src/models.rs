@@ -210,6 +210,21 @@ pub(crate) enum EditorAppId {
     Qoder,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub(crate) enum AppLocale {
+    #[default]
+    #[serde(rename = "zh-CN")]
+    ZhCn,
+    #[serde(rename = "en-US")]
+    EnUs,
+    #[serde(rename = "ja-JP")]
+    JaJp,
+    #[serde(rename = "ko-KR")]
+    KoKr,
+    #[serde(rename = "ru-RU")]
+    RuRu,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct InstalledEditorApp {
@@ -226,7 +241,9 @@ pub(crate) struct AppSettings {
     pub(crate) sync_opencode_openai_auth: bool,
     pub(crate) restart_editors_on_switch: bool,
     pub(crate) restart_editor_targets: Vec<EditorAppId>,
+    pub(crate) auto_start_api_proxy: bool,
     pub(crate) api_proxy_api_key: Option<String>,
+    pub(crate) locale: AppLocale,
 }
 
 impl Default for AppSettings {
@@ -238,7 +255,9 @@ impl Default for AppSettings {
             sync_opencode_openai_auth: false,
             restart_editors_on_switch: false,
             restart_editor_targets: Vec::new(),
+            auto_start_api_proxy: false,
             api_proxy_api_key: None,
+            locale: AppLocale::default(),
         }
     }
 }
@@ -252,6 +271,8 @@ pub(crate) struct AppSettingsPatch {
     pub(crate) sync_opencode_openai_auth: Option<bool>,
     pub(crate) restart_editors_on_switch: Option<bool>,
     pub(crate) restart_editor_targets: Option<Vec<EditorAppId>>,
+    pub(crate) auto_start_api_proxy: Option<bool>,
+    pub(crate) locale: Option<AppLocale>,
 }
 
 impl StoredAccount {

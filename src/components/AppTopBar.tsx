@@ -28,7 +28,7 @@ export function AppTopBar({
 }: AppTopBarProps) {
   const { locale, localeOptions, copy, setLocale } = useI18n();
   const appWindow = getCurrentWindow();
-  const languageLabel = "Language";
+  const languageLabel = copy.topBar.languagePicker;
   const languageOptions = localeOptions.map((item) => ({
     id: item.code,
     label: item.nativeLabel,

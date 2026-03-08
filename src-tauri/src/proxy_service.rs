@@ -41,8 +41,9 @@ use crate::models::UsageWindow;
 use crate::state::ApiProxyRuntimeHandle;
 use crate::state::ApiProxyRuntimeSnapshot;
 use crate::state::AppState;
-use crate::store::load_store;
-use crate::store::save_store;
+use crate::store::account_store_path_from_data_dir;
+use crate::store::load_store_from_path;
+use crate::store::save_store_to_path;
 use crate::usage::resolve_chatgpt_base_origin;
 use crate::utils::now_unix_seconds;
 use crate::utils::set_private_permissions;
@@ -67,6 +68,13 @@ const MODELS: &[&str] = &[
 ];
 
 #[derive(Clone)]
+pub(crate) struct ProxyStorageContext {
+    pub(crate) data_dir: PathBuf,
+    pub(crate) store_lock: Arc<tokio::sync::Mutex<()>>,
+    pub(crate) sync_active_auth_on_refresh: bool,
+}
+
+#[derive(Clone)]
 struct ProxyCandidate {
     label: String,
     account_id: String,
@@ -78,7 +86,7 @@ struct ProxyCandidate {
 
 #[derive(Clone)]
 struct ProxyContext {
-    app: AppHandle,
+    storage: ProxyStorageContext,
     api_key: Arc<RwLock<String>>,
     upstream_base_url: String,
     client: reqwest::Client,
@@ -127,18 +135,49 @@ struct ChatStreamState {
     has_tool_call_announced: bool,
 }
 
+pub(crate) fn new_proxy_storage_context(
+    data_dir: PathBuf,
+    store_lock: Arc<tokio::sync::Mutex<()>>,
+    sync_active_auth_on_refresh: bool,
+) -> ProxyStorageContext {
+    ProxyStorageContext {
+        data_dir,
+        store_lock,
+        sync_active_auth_on_refresh,
+    }
+}
+
+fn app_proxy_storage_context(
+    app: &AppHandle,
+    state: &AppState,
+) -> Result<ProxyStorageContext, String> {
+    Ok(new_proxy_storage_context(
+        app_data_dir(app)?,
+        state.store_lock.clone(),
+        true,
+    ))
+}
+
 pub(crate) async fn get_api_proxy_status_internal(
     app: &AppHandle,
     state: &AppState,
 ) -> Result<ApiProxyStatus, String> {
+    let storage = app_proxy_storage_context(app, state)?;
+    get_api_proxy_status_with_runtime(&storage, &state.api_proxy).await
+}
+
+pub(crate) async fn get_api_proxy_status_with_runtime(
+    storage: &ProxyStorageContext,
+    runtime_slot: &tokio::sync::Mutex<Option<ApiProxyRuntimeHandle>>,
+) -> Result<ApiProxyStatus, String> {
     let handle_state = {
-        let guard = state.api_proxy.lock().await;
+        let guard = runtime_slot.lock().await;
         guard.as_ref().map(snapshot_handle_state)
     };
 
     match handle_state {
         Some(handle_state) => Ok(status_from_handle_state(handle_state).await),
-        None => Ok(stopped_status(read_persisted_api_proxy_key(app, state).await?, None)),
+        None => Ok(stopped_status(read_persisted_api_proxy_key(storage).await?, None)),
     }
 }
 
@@ -147,8 +186,18 @@ pub(crate) async fn start_api_proxy_internal(
     state: &AppState,
     preferred_port: Option<u16>,
 ) -> Result<ApiProxyStatus, String> {
+    let storage = app_proxy_storage_context(app, state)?;
+    start_api_proxy_with_runtime(&storage, &state.api_proxy, preferred_port, "127.0.0.1").await
+}
+
+pub(crate) async fn start_api_proxy_with_runtime(
+    storage: &ProxyStorageContext,
+    runtime_slot: &tokio::sync::Mutex<Option<ApiProxyRuntimeHandle>>,
+    preferred_port: Option<u16>,
+    bind_host: &str,
+) -> Result<ApiProxyStatus, String> {
     let existing_handle = {
-        let mut guard = state.api_proxy.lock().await;
+        let mut guard = runtime_slot.lock().await;
         if let Some(existing) = guard.as_ref() {
             if !existing.task.is_finished() {
                 Some(snapshot_handle_state(existing))
@@ -165,13 +214,13 @@ pub(crate) async fn start_api_proxy_internal(
         return Ok(status_from_handle_state(existing_handle).await);
     }
 
-    let available_accounts = load_proxy_candidates(app).await?;
+    let available_accounts = load_proxy_candidates(storage).await?;
     if available_accounts.is_empty() {
         return Err("暂无可用于代理的账号，请先添加并授权账号。".to_string());
     }
 
     let preferred_port = preferred_port.unwrap_or(DEFAULT_PROXY_PORT);
-    let listener = TcpListener::bind(("127.0.0.1", preferred_port))
+    let listener = TcpListener::bind((bind_host, preferred_port))
         .await
         .map_err(|error| {
             format!("启动代理监听失败，端口 {preferred_port} 可能已被占用: {error}")
@@ -180,7 +229,7 @@ pub(crate) async fn start_api_proxy_internal(
         .local_addr()
         .map_err(|error| format!("读取代理端口失败: {error}"))?
         .port();
-    let api_key = ensure_persisted_api_proxy_key(app, state).await?;
+    let api_key = ensure_persisted_api_proxy_key(storage).await?;
     let shared_api_key = Arc::new(RwLock::new(api_key));
 
     let client = reqwest::Client::builder()
@@ -191,7 +240,7 @@ pub(crate) async fn start_api_proxy_internal(
 
     let shared = Arc::new(tokio::sync::Mutex::new(ApiProxyRuntimeSnapshot::default()));
     let context = Arc::new(ProxyContext {
-        app: app.clone(),
+        storage: storage.clone(),
         api_key: shared_api_key.clone(),
         upstream_base_url: resolve_codex_upstream_base_url(),
         client,
@@ -227,7 +276,7 @@ pub(crate) async fn start_api_proxy_internal(
     };
     let status = status_from_handle_state(snapshot_handle_state(&handle)).await;
 
-    let mut guard = state.api_proxy.lock().await;
+    let mut guard = runtime_slot.lock().await;
     *guard = Some(handle);
 
     Ok(status)
@@ -237,13 +286,21 @@ pub(crate) async fn stop_api_proxy_internal(
     app: &AppHandle,
     state: &AppState,
 ) -> Result<ApiProxyStatus, String> {
+    let storage = app_proxy_storage_context(app, state)?;
+    stop_api_proxy_with_runtime(&storage, &state.api_proxy).await
+}
+
+pub(crate) async fn stop_api_proxy_with_runtime(
+    storage: &ProxyStorageContext,
+    runtime_slot: &tokio::sync::Mutex<Option<ApiProxyRuntimeHandle>>,
+) -> Result<ApiProxyStatus, String> {
     let handle = {
-        let mut guard = state.api_proxy.lock().await;
+        let mut guard = runtime_slot.lock().await;
         guard.take()
     };
 
     let Some(mut handle) = handle else {
-        return Ok(stopped_status(read_persisted_api_proxy_key(app, state).await?, None));
+        return Ok(stopped_status(read_persisted_api_proxy_key(storage).await?, None));
     };
 
     if let Some(shutdown_tx) = handle.shutdown_tx.take() {
@@ -262,10 +319,18 @@ pub(crate) async fn refresh_api_proxy_key_internal(
     app: &AppHandle,
     state: &AppState,
 ) -> Result<ApiProxyStatus, String> {
-    let new_api_key = regenerate_persisted_api_proxy_key(app, state).await?;
+    let storage = app_proxy_storage_context(app, state)?;
+    refresh_api_proxy_key_with_runtime(&storage, &state.api_proxy).await
+}
+
+pub(crate) async fn refresh_api_proxy_key_with_runtime(
+    storage: &ProxyStorageContext,
+    runtime_slot: &tokio::sync::Mutex<Option<ApiProxyRuntimeHandle>>,
+) -> Result<ApiProxyStatus, String> {
+    let new_api_key = regenerate_persisted_api_proxy_key(storage).await?;
 
     let handle_state = {
-        let guard = state.api_proxy.lock().await;
+        let guard = runtime_slot.lock().await;
         if let Some(handle) = guard.as_ref() {
             if let Ok(mut key_guard) = handle.api_key.write() {
                 *key_guard = new_api_key.clone();
@@ -918,7 +983,7 @@ async fn send_codex_request_over_candidates(
     headers: &HeaderMap,
     payload: &Value,
 ) -> Result<(ProxyCandidate, reqwest::Response), Response<Body>> {
-    let candidates = match load_proxy_candidates(&context.app).await {
+    let candidates = match load_proxy_candidates(&context.storage).await {
         Ok(items) if !items.is_empty() => items,
         Ok(_) => {
             return Err(json_error_response(
@@ -969,7 +1034,7 @@ async fn send_codex_request_over_candidates(
             };
 
             if !did_refresh && should_retry_with_token_refresh(status, &upstream_body) {
-                match refresh_proxy_candidate_auth(&context.app, &candidate).await {
+                match refresh_proxy_candidate_auth(&context.storage, &candidate).await {
                     Ok(refreshed_candidate) => {
                         candidate = refreshed_candidate;
                         did_refresh = true;
@@ -1062,10 +1127,9 @@ async fn forward_codex_request_with_candidate(
         .map_err(|error| format!("请求 Codex 上游失败 {upstream_url}: {error}"))
 }
 
-async fn load_proxy_candidates(app: &AppHandle) -> Result<Vec<ProxyCandidate>, String> {
-    let state = app.state::<AppState>();
-    let _guard = state.store_lock.lock().await;
-    let store = load_store(app)?;
+async fn load_proxy_candidates(storage: &ProxyStorageContext) -> Result<Vec<ProxyCandidate>, String> {
+    let _guard = storage.store_lock.lock().await;
+    let store = load_store_from_path(&account_store_path_from_data_dir(&storage.data_dir))?;
 
     let mut candidates = store
         .accounts
@@ -1147,11 +1211,11 @@ fn remaining_percent(window: Option<&UsageWindow>) -> i32 {
 }
 
 async fn refresh_proxy_candidate_auth(
-    app: &AppHandle,
+    storage: &ProxyStorageContext,
     candidate: &ProxyCandidate,
 ) -> Result<ProxyCandidate, String> {
     let refreshed_auth_json = refresh_chatgpt_auth_tokens(&candidate.auth_json).await?;
-    persist_refreshed_candidate_auth(app, &candidate.account_id, &refreshed_auth_json).await?;
+    persist_refreshed_candidate_auth(storage, &candidate.account_id, &refreshed_auth_json).await?;
 
     let extracted = extract_auth(&refreshed_auth_json)
         .map_err(|error| format!("刷新后解析账号登录态失败: {error}"))?;
@@ -1167,13 +1231,13 @@ async fn refresh_proxy_candidate_auth(
 }
 
 async fn persist_refreshed_candidate_auth(
-    app: &AppHandle,
+    storage: &ProxyStorageContext,
     account_id: &str,
     refreshed_auth_json: &Value,
 ) -> Result<(), String> {
-    let state = app.state::<AppState>();
-    let _guard = state.store_lock.lock().await;
-    let mut store = load_store(app)?;
+    let _guard = storage.store_lock.lock().await;
+    let store_path = account_store_path_from_data_dir(&storage.data_dir);
+    let mut store = load_store_from_path(&store_path)?;
 
     if let Some(account) = store
         .accounts
@@ -1184,9 +1248,9 @@ async fn persist_refreshed_candidate_auth(
         account.updated_at = now_unix_seconds();
     }
 
-    save_store(app, &store)?;
+    save_store_to_path(&store_path, &store)?;
 
-    if current_auth_account_id().as_deref() == Some(account_id) {
+    if storage.sync_active_auth_on_refresh && current_auth_account_id().as_deref() == Some(account_id) {
         write_active_codex_auth(refreshed_auth_json)?;
     }
 
@@ -1428,16 +1492,13 @@ fn is_authorized(headers: &HeaderMap, api_key: &str) -> bool {
     false
 }
 
-async fn read_persisted_api_proxy_key(
-    app: &AppHandle,
-    state: &AppState,
-) -> Result<Option<String>, String> {
-    if let Some(value) = read_api_proxy_key_file(app)? {
+async fn read_persisted_api_proxy_key(storage: &ProxyStorageContext) -> Result<Option<String>, String> {
+    if let Some(value) = read_api_proxy_key_file(storage)? {
         return Ok(Some(value));
     }
 
-    let _guard = state.store_lock.lock().await;
-    let store = load_store(app)?;
+    let _guard = storage.store_lock.lock().await;
+    let store = load_store_from_path(&account_store_path_from_data_dir(&storage.data_dir))?;
     let legacy_value = store
         .settings
         .api_proxy_api_key
@@ -1445,22 +1506,20 @@ async fn read_persisted_api_proxy_key(
         .filter(|value| !value.trim().is_empty());
 
     if let Some(value) = legacy_value.clone() {
-        write_api_proxy_key_file(app, &value)?;
+        write_api_proxy_key_file(storage, &value)?;
     }
 
     Ok(legacy_value)
 }
 
-async fn ensure_persisted_api_proxy_key(
-    app: &AppHandle,
-    state: &AppState,
-) -> Result<String, String> {
-    if let Some(existing) = read_api_proxy_key_file(app)? {
+async fn ensure_persisted_api_proxy_key(storage: &ProxyStorageContext) -> Result<String, String> {
+    if let Some(existing) = read_api_proxy_key_file(storage)? {
         return Ok(existing);
     }
 
-    let _guard = state.store_lock.lock().await;
-    let mut store = load_store(app)?;
+    let _guard = storage.store_lock.lock().await;
+    let store_path = account_store_path_from_data_dir(&storage.data_dir);
+    let mut store = load_store_from_path(&store_path)?;
 
     if let Some(existing) = store
         .settings
@@ -1468,28 +1527,26 @@ async fn ensure_persisted_api_proxy_key(
         .clone()
         .filter(|value| !value.trim().is_empty())
     {
-        write_api_proxy_key_file(app, &existing)?;
+        write_api_proxy_key_file(storage, &existing)?;
         return Ok(existing);
     }
 
     let new_key = generate_api_proxy_key();
     store.settings.api_proxy_api_key = Some(new_key.clone());
-    save_store(app, &store)?;
-    write_api_proxy_key_file(app, &new_key)?;
+    save_store_to_path(&store_path, &store)?;
+    write_api_proxy_key_file(storage, &new_key)?;
     Ok(new_key)
 }
 
-async fn regenerate_persisted_api_proxy_key(
-    app: &AppHandle,
-    state: &AppState,
-) -> Result<String, String> {
+async fn regenerate_persisted_api_proxy_key(storage: &ProxyStorageContext) -> Result<String, String> {
     let new_key = generate_api_proxy_key();
-    write_api_proxy_key_file(app, &new_key)?;
+    write_api_proxy_key_file(storage, &new_key)?;
 
-    let _guard = state.store_lock.lock().await;
-    let mut store = load_store(app)?;
+    let _guard = storage.store_lock.lock().await;
+    let store_path = account_store_path_from_data_dir(&storage.data_dir);
+    let mut store = load_store_from_path(&store_path)?;
     store.settings.api_proxy_api_key = Some(new_key.clone());
-    save_store(app, &store)?;
+    save_store_to_path(&store_path, &store)?;
 
     Ok(new_key)
 }
@@ -1498,8 +1555,8 @@ fn generate_api_proxy_key() -> String {
     format!("sk-{}", uuid::Uuid::new_v4().simple())
 }
 
-fn read_api_proxy_key_file(app: &AppHandle) -> Result<Option<String>, String> {
-    let path = api_proxy_key_path(app)?;
+fn read_api_proxy_key_file(storage: &ProxyStorageContext) -> Result<Option<String>, String> {
+    let path = api_proxy_key_path(storage)?;
     if !path.exists() {
         return Ok(None);
     }
@@ -1514,17 +1571,19 @@ fn read_api_proxy_key_file(app: &AppHandle) -> Result<Option<String>, String> {
     Ok(Some(value.to_string()))
 }
 
-fn write_api_proxy_key_file(app: &AppHandle, api_key: &str) -> Result<(), String> {
-    let path = api_proxy_key_path(app)?;
+fn write_api_proxy_key_file(storage: &ProxyStorageContext, api_key: &str) -> Result<(), String> {
+    let path = api_proxy_key_path(storage)?;
     write_private_file_atomically(&path, api_key.as_bytes())
 }
 
-fn api_proxy_key_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
+fn api_proxy_key_path(storage: &ProxyStorageContext) -> Result<PathBuf, String> {
+    Ok(storage.data_dir.join("api-proxy.key"))
+}
+
+fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
         .app_data_dir()
-        .map_err(|error| format!("无法获取应用数据目录: {error}"))?;
-    Ok(dir.join("api-proxy.key"))
+        .map_err(|error| format!("无法获取应用数据目录: {error}"))
 }
 
 fn write_private_file_atomically(path: &Path, contents: &[u8]) -> Result<(), String> {

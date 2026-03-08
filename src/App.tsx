@@ -160,6 +160,8 @@ function App() {
               status={apiProxyStatus}
               cloudflaredStatus={cloudflaredStatus}
               accountCount={accounts.length}
+              autoStartEnabled={settings.autoStartApiProxy}
+              savingSettings={savingSettings}
               starting={startingApiProxy}
               stopping={stoppingApiProxy}
               refreshingApiKey={refreshingApiProxyKey}
@@ -170,6 +172,11 @@ function App() {
               onStop={() => void onStopApiProxy()}
               onRefreshApiKey={() => void onRefreshApiProxyKey()}
               onRefresh={() => void loadApiProxyStatus()}
+              onToggleAutoStart={(enabled) =>
+                void updateSettings(
+                  { autoStartApiProxy: enabled },
+                  { silent: true, keepInteractive: true },
+                )}
               onRefreshCloudflared={() => void loadCloudflaredStatus()}
               onInstallCloudflared={() => void onInstallCloudflared()}
               onStartCloudflared={(input) => void onStartCloudflared(input)}
@@ -178,7 +185,12 @@ function App() {
           )}
         </section>
       </main>
-      <BottomDock activeTab={activeTab} onSelectTab={setActiveTab} />
+      <BottomDock
+        activeTab={activeTab}
+        settingsOpen={settingsOpen}
+        onSelectTab={setActiveTab}
+        onToggleSettings={() => setSettingsOpen((current) => !current)}
+      />
     </div>
   );
 }

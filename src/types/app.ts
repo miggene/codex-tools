@@ -1,3 +1,5 @@
+import type { AppLocale } from "../i18n/catalog";
+
 export type UsageWindow = {
   usedPercent: number;
   windowSeconds: number;
@@ -148,6 +150,8 @@ export type AppSettings = {
   syncOpencodeOpenaiAuth: boolean;
   restartEditorsOnSwitch: boolean;
   restartEditorTargets: EditorAppId[];
+  autoStartApiProxy: boolean;
+  locale: AppLocale;
 };
 
 export type UpdateSettingsOptions = {

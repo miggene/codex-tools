@@ -23,6 +23,7 @@ use crate::utils::now_unix_seconds;
 use crate::utils::short_account;
 
 const DEACTIVATED_WORKSPACE_NOTICE: &str = "该账号已被踢出 team 组织，请重新授权后再刷新。";
+const AUTH_EXPIRED_NOTICE: &str = "授权过期，请重新登录授权。";
 
 struct PreparedImport {
     auth_json: serde_json::Value,
@@ -373,6 +374,13 @@ fn normalize_usage_error_message(raw_error: &str) -> String {
     let normalized = raw_error.to_ascii_lowercase();
     if normalized.contains("deactivated_workspace") {
         return DEACTIVATED_WORKSPACE_NOTICE.to_string();
+    }
+    if normalized.contains("provided authentication token is expired")
+        || normalized.contains("your refresh token has already been used to generate a new access token")
+        || normalized.contains("please try signing in again")
+        || normalized.contains("token is expired")
+    {
+        return AUTH_EXPIRED_NOTICE.to_string();
     }
     raw_error.to_string()
 }

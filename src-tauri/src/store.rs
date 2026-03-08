@@ -1,5 +1,6 @@
 use std::fs;
 use std::io::Write;
+use std::path::Path;
 use std::path::PathBuf;
 
 use tauri::AppHandle;
@@ -15,18 +16,30 @@ use crate::utils::set_private_permissions;
 use crate::utils::short_account;
 
 pub(crate) fn load_store(app: &AppHandle) -> Result<AccountsStore, String> {
-    let path = account_store_path(app)?;
+    load_store_from_path(&account_store_path(app)?)
+}
+
+pub(crate) fn save_store(app: &AppHandle, store: &AccountsStore) -> Result<(), String> {
+    save_store_to_path(&account_store_path(app)?, store)
+}
+
+/// 启动时自动同步当前登录账号：
+/// 若本机已有 `~/.codex/auth.json` 且账号不在列表中，则自动写入存储。
+pub(crate) fn sync_current_auth_account_on_startup(app: &AppHandle) -> Result<(), String> {
+    sync_current_auth_account_on_startup_in_path(&account_store_path(app)?)
+}
+
+pub(crate) fn load_store_from_path(path: &Path) -> Result<AccountsStore, String> {
     if !path.exists() {
         return Ok(AccountsStore::default());
     }
 
-    let raw = fs::read_to_string(&path)
+    let raw = fs::read_to_string(path)
         .map_err(|e| format!("读取账号存储文件失败 {}: {e}", path.display()))?;
 
     match serde_json::from_str::<AccountsStore>(&raw) {
         Ok(store) => Ok(store),
         Err(primary_err) => {
-            // 兼容“合法 JSON 后拼接了额外字符/内容”的场景，尝试恢复首个对象。
             let mut stream = serde_json::Deserializer::from_str(&raw).into_iter::<AccountsStore>();
             if let Some(Ok(recovered)) = stream.next() {
                 log::warn!(
@@ -34,7 +47,7 @@ pub(crate) fn load_store(app: &AppHandle) -> Result<AccountsStore, String> {
                     path.display(),
                     primary_err
                 );
-                if let Err(repair_err) = write_store_file(&path, &recovered) {
+                if let Err(repair_err) = write_store_file(path, &recovered) {
                     log::warn!(
                         "恢复后重写账号存储文件失败 {}: {}",
                         path.display(),
@@ -44,8 +57,7 @@ pub(crate) fn load_store(app: &AppHandle) -> Result<AccountsStore, String> {
                 return Ok(recovered);
             }
 
-            // 无法恢复时，备份损坏文件并重建默认文件，避免启动阶段崩溃。
-            if let Err(backup_err) = backup_corrupted_store_file(&path, &raw) {
+            if let Err(backup_err) = backup_corrupted_store_file(path, &raw) {
                 log::warn!(
                     "账号存储文件损坏，备份失败 {}: {}",
                     path.display(),
@@ -54,7 +66,7 @@ pub(crate) fn load_store(app: &AppHandle) -> Result<AccountsStore, String> {
             }
 
             let fallback = AccountsStore::default();
-            if let Err(repair_err) = write_store_file(&path, &fallback) {
+            if let Err(repair_err) = write_store_file(path, &fallback) {
                 return Err(format!(
                     "账号存储文件格式无效且修复失败 {}: {}; {}",
                     path.display(),
@@ -73,14 +85,11 @@ pub(crate) fn load_store(app: &AppHandle) -> Result<AccountsStore, String> {
     }
 }
 
-pub(crate) fn save_store(app: &AppHandle, store: &AccountsStore) -> Result<(), String> {
-    let path = account_store_path(app)?;
-    write_store_file(&path, store)
+pub(crate) fn save_store_to_path(path: &Path, store: &AccountsStore) -> Result<(), String> {
+    write_store_file(path, store)
 }
 
-/// 启动时自动同步当前登录账号：
-/// 若本机已有 `~/.codex/auth.json` 且账号不在列表中，则自动写入存储。
-pub(crate) fn sync_current_auth_account_on_startup(app: &AppHandle) -> Result<(), String> {
+pub(crate) fn sync_current_auth_account_on_startup_in_path(path: &Path) -> Result<(), String> {
     let auth_json = match read_current_codex_auth_optional()? {
         Some(value) => value,
         None => return Ok(()),
@@ -94,7 +103,7 @@ pub(crate) fn sync_current_auth_account_on_startup(app: &AppHandle) -> Result<()
         }
     };
 
-    let mut store = load_store(app)?;
+    let mut store = load_store_from_path(path)?;
     let already_exists = store
         .accounts
         .iter()
@@ -122,7 +131,7 @@ pub(crate) fn sync_current_auth_account_on_startup(app: &AppHandle) -> Result<()
         usage_error: None,
     };
     store.accounts.push(stored);
-    save_store(app, &store)?;
+    save_store_to_path(path, &store)?;
     Ok(())
 }
 
@@ -131,10 +140,14 @@ fn account_store_path(app: &AppHandle) -> Result<PathBuf, String> {
         .path()
         .app_data_dir()
         .map_err(|e| format!("无法获取应用数据目录: {e}"))?;
-    Ok(dir.join("accounts.json"))
+    Ok(account_store_path_from_data_dir(&dir))
 }
 
-fn write_store_file(path: &PathBuf, store: &AccountsStore) -> Result<(), String> {
+pub(crate) fn account_store_path_from_data_dir(data_dir: &Path) -> PathBuf {
+    data_dir.join("accounts.json")
+}
+
+fn write_store_file(path: &Path, store: &AccountsStore) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| format!("无法解析存储目录 {}", path.display()))?;
@@ -147,7 +160,7 @@ fn write_store_file(path: &PathBuf, store: &AccountsStore) -> Result<(), String>
     Ok(())
 }
 
-fn write_file_atomically(path: &PathBuf, contents: &[u8]) -> Result<(), String> {
+fn write_file_atomically(path: &Path, contents: &[u8]) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| format!("无法解析存储目录 {}", path.display()))?;
@@ -217,7 +230,7 @@ fn write_file_atomically(path: &PathBuf, contents: &[u8]) -> Result<(), String> 
     write_result
 }
 
-fn backup_corrupted_store_file(path: &PathBuf, raw: &str) -> Result<PathBuf, String> {
+fn backup_corrupted_store_file(path: &Path, raw: &str) -> Result<PathBuf, String> {
     let parent = path
         .parent()
         .ok_or_else(|| format!("无法解析存储目录 {}", path.display()))?;

@@ -7,6 +7,7 @@ license = "MIT"
 repository = ""
 edition = "2021"
 rust-version = "1.77.2"
+default-run = "app"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -23,7 +24,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tauri-plugin-log = "2"
 tauri = { version = "2.10.0", features = ["tray-icon"] }
-tokio = { version = "1", features = ["sync", "time"] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 reqwest = { version = "0.12", features = ["json", "gzip", "stream"] }
 uuid = { version = "1", features = ["v4"] }
 dirs = "6"

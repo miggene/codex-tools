@@ -49,6 +49,12 @@ pub(crate) async fn update_app_settings_internal(
         if let Some(value) = patch.restart_editor_targets {
             store.settings.restart_editor_targets = value;
         }
+        if let Some(value) = patch.auto_start_api_proxy {
+            store.settings.auto_start_api_proxy = value;
+        }
+        if let Some(value) = patch.locale {
+            store.settings.locale = value;
+        }
 
         let settings = store.settings.clone();
         save_store(app, &store)?;
