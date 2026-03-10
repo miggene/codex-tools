@@ -35,11 +35,21 @@ cargo build --manifest-path src-tauri/proxyd/Cargo.toml
 - `--data-dir ~/.codex-tools-proxyd`
 - `--host 0.0.0.0`
 - `--port 8787`
+- 请求体大小上限默认 `512 MiB`
 
 如果你不希望启动时自动把当前 `~/.codex/auth.json` 写入账号池，可以加：
 
 ```bash
 --no-sync-current-auth
+```
+
+如果需要覆盖默认请求体大小上限，可以在启动前设置环境变量：
+
+```bash
+CODEX_TOOLS_PROXY_MAX_BODY_MIB=1024 ./src-tauri/proxyd/target/debug/codex-tools-proxyd serve \
+  --data-dir ~/.codex-tools-proxyd \
+  --host 0.0.0.0 \
+  --port 8787
 ```
 
 ## 数据目录

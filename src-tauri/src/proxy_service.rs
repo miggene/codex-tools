@@ -10,6 +10,7 @@ use std::sync::RwLock;
 use async_stream::stream;
 use axum::body::Body;
 use axum::body::Bytes;
+use axum::extract::DefaultBodyLimit;
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::http::Method;
@@ -54,6 +55,10 @@ use crate::utils::set_private_permissions;
 use crate::utils::truncate_for_error;
 
 const DEFAULT_PROXY_PORT: u16 = 8787;
+const DEFAULT_PROXY_REQUEST_BODY_LIMIT_MIB: usize = 512;
+const DEFAULT_PROXY_REQUEST_BODY_LIMIT_BYTES: usize =
+    DEFAULT_PROXY_REQUEST_BODY_LIMIT_MIB * 1024 * 1024;
+const PROXY_REQUEST_BODY_LIMIT_MIB_ENV_VAR: &str = "CODEX_TOOLS_PROXY_MAX_BODY_MIB";
 const CODEX_CLIENT_VERSION: &str = "0.101.0";
 const CODEX_USER_AGENT: &str = "codex_cli_rs/0.101.0 (Mac OS 26.0.1; arm64) Apple_Terminal/464";
 const SSE_DONE: &str = "data: [DONE]\n\n";
@@ -260,6 +265,7 @@ pub(crate) async fn start_api_proxy_with_runtime(
         client,
         shared: shared.clone(),
     });
+    let request_body_limit = resolve_proxy_request_body_limit_bytes();
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
     let router = Router::new()
@@ -268,6 +274,7 @@ pub(crate) async fn start_api_proxy_with_runtime(
         .route("/v1/chat/completions", post(chat_completions_handler))
         .route("/v1/responses", post(responses_handler))
         .fallback(any(unsupported_proxy_handler))
+        .layer(DefaultBodyLimit::max(request_body_limit))
         .with_state(context.clone());
 
     let task = tokio::spawn(async move {
@@ -2532,14 +2539,43 @@ fn proxy_base_url(port: u16) -> String {
     format!("http://127.0.0.1:{port}/v1")
 }
 
+fn resolve_proxy_request_body_limit_bytes() -> usize {
+    resolve_proxy_request_body_limit_bytes_from_mib_value(
+        std::env::var(PROXY_REQUEST_BODY_LIMIT_MIB_ENV_VAR)
+            .ok()
+            .as_deref(),
+    )
+}
+
+fn resolve_proxy_request_body_limit_bytes_from_mib_value(value: Option<&str>) -> usize {
+    parse_proxy_request_body_limit_mib(value)
+        .and_then(|mib| mib.checked_mul(1024 * 1024))
+        .unwrap_or(DEFAULT_PROXY_REQUEST_BODY_LIMIT_BYTES)
+}
+
+fn parse_proxy_request_body_limit_mib(value: Option<&str>) -> Option<usize> {
+    let raw = value?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+
+    match raw.parse::<usize>() {
+        Ok(parsed) if parsed > 0 => Some(parsed),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::convert_completed_response_to_chat_completion;
     use super::convert_openai_chat_request_to_codex;
     use super::extract_completed_response_from_sse;
     use super::normalize_openai_responses_request;
+    use super::parse_proxy_request_body_limit_mib;
+    use super::resolve_proxy_request_body_limit_bytes_from_mib_value;
     use super::rewrite_response_models_for_client;
     use super::rewrite_sse_event_data_models_for_client;
+    use super::DEFAULT_PROXY_REQUEST_BODY_LIMIT_BYTES;
     use serde_json::json;
 
     #[test]
@@ -2809,6 +2845,39 @@ data: {"type":"response.completed","response":{"id":"resp_123","created_at":1,"m
                 .and_then(|value| value.get("model"))
                 .and_then(|value| value.as_str()),
             Some("gpt-5.4")
+        );
+    }
+
+    #[test]
+    fn parses_proxy_request_body_limit_mib_from_valid_value() {
+        assert_eq!(parse_proxy_request_body_limit_mib(Some("1024")), Some(1024));
+    }
+
+    #[test]
+    fn ignores_invalid_proxy_request_body_limit_values() {
+        assert_eq!(parse_proxy_request_body_limit_mib(Some("")), None);
+        assert_eq!(parse_proxy_request_body_limit_mib(Some("0")), None);
+        assert_eq!(parse_proxy_request_body_limit_mib(Some("-1")), None);
+        assert_eq!(parse_proxy_request_body_limit_mib(Some("abc")), None);
+    }
+
+    #[test]
+    fn falls_back_to_default_proxy_request_body_limit_bytes() {
+        assert_eq!(
+            resolve_proxy_request_body_limit_bytes_from_mib_value(None),
+            DEFAULT_PROXY_REQUEST_BODY_LIMIT_BYTES
+        );
+        assert_eq!(
+            resolve_proxy_request_body_limit_bytes_from_mib_value(Some("bad")),
+            DEFAULT_PROXY_REQUEST_BODY_LIMIT_BYTES
+        );
+    }
+
+    #[test]
+    fn converts_proxy_request_body_limit_mib_to_bytes() {
+        assert_eq!(
+            resolve_proxy_request_body_limit_bytes_from_mib_value(Some("1")),
+            1024 * 1024
         );
     }
 }
