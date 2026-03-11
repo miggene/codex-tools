@@ -6,6 +6,9 @@ type AddAccountSectionProps = {
 	onOpenAddDialog: () => void;
 	onSmartSwitch: () => void;
 	smartSwitching: boolean;
+	onExportAccounts: () => void;
+	onImportAccounts: () => void;
+	importing: boolean;
 };
 
 export function AddAccountSection({
@@ -14,6 +17,9 @@ export function AddAccountSection({
 	onOpenAddDialog,
 	onSmartSwitch,
 	smartSwitching,
+	onExportAccounts,
+	onImportAccounts,
+	importing,
 }: AddAccountSectionProps) {
 	const { copy } = useI18n();
 
@@ -37,6 +43,14 @@ export function AddAccountSection({
 						: addFlowActive
 							? copy.addAccount.waitingButton
 							: copy.addAccount.startButton}
+				</button>
+			</div>
+			<div className="importRow">
+				<button className="ghost" onClick={onExportAccounts} title={copy.addAccount.exportAccounts}>
+					{copy.addAccount.exportAccounts}
+				</button>
+				<button className="ghost" onClick={onImportAccounts} disabled={importing} title={copy.addAccount.importAccounts}>
+					{copy.addAccount.importAccounts}
 				</button>
 			</div>
 		</section>

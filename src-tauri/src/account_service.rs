@@ -519,3 +519,31 @@ fn normalize_import_source(source: &str) -> String {
         trimmed.to_string()
     }
 }
+
+pub(crate) async fn export_accounts_internal(app: &AppHandle) -> Result<Vec<AuthJsonImportInput>, String> {
+    let store = load_store(app)?;
+    if store.accounts.is_empty() {
+        return Err("没有可导出的账号".to_string());
+    }
+
+    let items: Vec<AuthJsonImportInput> = store
+        .accounts
+        .iter()
+        .map(|account| {
+            let content = serde_json::to_string(&account.auth_json)
+                .unwrap_or_default();
+            let source = if account.label.is_empty() {
+                account.account_id.clone()
+            } else {
+                account.label.clone()
+            };
+            AuthJsonImportInput {
+                source,
+                content,
+                label: Some(account.label.clone()),
+            }
+        })
+        .collect();
+
+    Ok(items)
+}

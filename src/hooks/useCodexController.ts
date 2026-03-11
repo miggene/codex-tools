@@ -3,6 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { check } from '@tauri-apps/plugin-updater';
+import { save, open } from '@tauri-apps/plugin-dialog';
+import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
 import { useI18n } from '../i18n/I18nProvider';
 import { localizeBackendError } from '../i18n/backendErrors';
 import { DEFAULT_LOCALE } from '../i18n/catalog';
@@ -809,6 +811,67 @@ export function useCodexController() {
 		[applyImportResult, copy.notices, localizeError, localizeImportResult],
 	);
 
+	const exportAllAccounts = useCallback(async () => {
+		try {
+			const items = await invoke<AuthJsonImportInput[]>('export_accounts');
+			if (items.length === 0) {
+				setNotice({ type: 'info', message: copy.notices.noAccountsToExport });
+				return;
+			}
+
+			const filePath = await save({
+				defaultPath: 'codex-accounts.json',
+				filters: [{ name: 'JSON', extensions: ['json'] }],
+			});
+			if (!filePath) {
+				return;
+			}
+
+			const json = JSON.stringify(items, null, 2);
+			await writeTextFile(filePath, json);
+			setNotice({ type: 'ok', message: copy.notices.exportSuccess(items.length) });
+		} catch (error) {
+			setNotice({
+				type: 'error',
+				message: copy.notices.exportFailed(localizeError(String(error))),
+			});
+		}
+	}, [copy.notices, localizeError]);
+
+	const importAccountsBundle = useCallback(async () => {
+		try {
+			const filePath = await open({
+				multiple: false,
+				filters: [{ name: 'JSON', extensions: ['json'] }],
+			});
+			if (!filePath || Array.isArray(filePath)) {
+				return;
+			}
+
+			const content = await readTextFile(filePath);
+			const items = JSON.parse(content) as AuthJsonImportInput[];
+			if (!Array.isArray(items) || items.length === 0) {
+				setNotice({ type: 'error', message: copy.notices.importInvalidFile });
+				return;
+			}
+
+			setImportingUpload(true);
+			try {
+				const result = await invoke<ImportAccountsResult>('import_auth_json_accounts', {
+					items,
+				});
+				await applyImportResult(localizeImportResult(result), copy.notices.bundleImportPrefix);
+			} finally {
+				setImportingUpload(false);
+			}
+		} catch (error) {
+			setNotice({
+				type: 'error',
+				message: copy.notices.importFailedPlain(copy.notices.bundleImportPrefix, localizeError(String(error))),
+			});
+		}
+	}, [applyImportResult, copy.notices, localizeError, localizeImportResult]);
+
 	const onStartApiProxy = useCallback(
 		async (port?: number | null) => {
 			if (startingApiProxy || apiProxyStatus.running) {
@@ -1365,6 +1428,8 @@ export function useCodexController() {
 		onStartAddAccount,
 		onCloseAddDialog,
 		onImportAuthFiles,
+		exportAllAccounts,
+		importAccountsBundle,
 		loadApiProxyStatus,
 		onStartApiProxy,
 		onStopApiProxy,

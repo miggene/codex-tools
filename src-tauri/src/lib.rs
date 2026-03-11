@@ -93,6 +93,11 @@ async fn delete_account(
 }
 
 #[tauri::command]
+async fn export_accounts(app: AppHandle) -> Result<Vec<AuthJsonImportInput>, String> {
+    account_service::export_accounts_internal(&app).await
+}
+
+#[tauri::command]
 async fn refresh_all_usage(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -520,6 +525,8 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .on_menu_event(tray::handle_status_bar_menu_event)
         .on_window_event(handle_window_close_to_background)
         .setup(|app| {

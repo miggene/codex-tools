@@ -58,6 +58,8 @@ export type MessageCatalog = {
 	};
 	addAccount: {
 		smartSwitch: string;
+		exportAccounts: string;
+		importAccounts: string;
 		startButton: string;
 		startingButton: string;
 		waitingButton: string;
@@ -348,7 +350,12 @@ export type MessageCatalog = {
 		smartSwitchNoTarget: string;
 		smartSwitchAlreadyBest: string;
 		fileImportPrefix: string;
+		bundleImportPrefix: string;
 		importFilesRequired: string;
+		noAccountsToExport: string;
+		exportSuccess: (count: number) => string;
+		exportFailed: (error: string) => string;
+		importInvalidFile: string;
 		importFailedPlain: (prefix: string, error: string) => string;
 		importFailedWithSource: (prefix: string, source: string, error: string) => string;
 		importFailedNoValidJson: (prefix: string) => string;
@@ -467,6 +474,8 @@ function compileLocale(raw: RawMessageCatalog): MessageCatalog {
 				fillTemplate(raw.notices.importSummaryFirstFailure, { source, error }),
 			importSummaryDone: (prefix, summary, suffix) =>
 				fillTemplate(raw.notices.importSummaryDone, { prefix, summary, suffix }).trim(),
+			exportSuccess: (count) => fillTemplate(raw.notices.exportSuccess, { count }),
+			exportFailed: (error) => fillTemplate(raw.notices.exportFailed, { error }),
 			proxyStarted: (target) => fillTemplate(raw.notices.proxyStarted, { target }),
 			proxyStartFailed: (error) => fillTemplate(raw.notices.proxyStartFailed, { error }),
 			proxyStopFailed: (error) => fillTemplate(raw.notices.proxyStopFailed, { error }),

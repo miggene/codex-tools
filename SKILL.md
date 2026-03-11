@@ -1,42 +1,107 @@
 ---
-name: frontend-design
-description: Create distinctive, production-grade frontend interfaces with high design quality. Use this skill when the user asks to build web components, pages, or applications. Generates creative, polished code that avoids generic AI aesthetics.
-license: Complete terms in LICENSE.txt
+name: git-commit-generator
+description: Generate git commit messages from current changes. Analyzes code modifications, allows user to select files to stage, then creates Conventional Commits format messages with body. User confirms before committing.
 ---
 
-This skill guides creation of distinctive, production-grade frontend interfaces that avoid generic "AI slop" aesthetics. Implement real working code with exceptional attention to aesthetic details and creative choices.
+# Git Commit Generator
 
-The user provides frontend requirements: a component, page, application, or interface to build. They may include context about the purpose, audience, or technical constraints.
+## Usage
+- `/commit` - Stage files and generate commit message for current changes
+- `/git-commit` - Same as above
 
-## Design Thinking
+## Workflow
 
-Before coding, understand the context and commit to a BOLD aesthetic direction:
-- **Purpose**: What problem does this interface solve? Who uses it?
-- **Tone**: Pick an extreme: brutally minimal, maximalist chaos, retro-futuristic, organic/natural, luxury/refined, playful/toy-like, editorial/magazine, brutalist/raw, art deco/geometric, soft/pastel, industrial/utilitarian, etc. There are so many flavors to choose from. Use these for inspiration but design one that is true to the aesthetic direction.
-- **Constraints**: Technical requirements (framework, performance, accessibility).
-- **Differentiation**: What makes this UNFORGETTABLE? What's the one thing someone will remember?
+### Step 1: 显示修改的文件
+执行 `git status --porcelain` 或 `git diff --name-status` 显示所有修改的文件，包括：
+- 已修改的文件 (M)
+- 新增的文件 (A)
+- 删除的文件 (D)
+- 未跟踪的文件 (??)
 
-**CRITICAL**: Choose a clear conceptual direction and execute it with precision. Bold maximalism and refined minimalism both work - the key is intentionality, not intensity.
+### Step 2: 用户选择要 Stage 的文件
+显示选项：
+```
+📁 修改的文件:
 
-Then implement working code (HTML/CSS/JS, React, Vue, etc.) that is:
-- Production-grade and functional
-- Visually striking and memorable
-- Cohesive with a clear aesthetic point-of-view
-- Meticulously refined in every detail
+M  src/hooks/useCodexController.ts
+M  src/components/AddAccountSection.tsx
+A  src-tauri/src/account_service.rs
+M  src-tauri/src/lib.rs
+M  src/i18n/locales/en-US.json
+...
 
-## Frontend Aesthetics Guidelines
+请选择要 Stage 的文件:
+[1] 全部文件 (推荐)
+[2] 仅后端文件 (src-tauri/*)
+[3] 仅前端文件 (src/*)
+[4] 自定义选择...
+```
 
-Focus on:
-- **Typography**: Choose fonts that are beautiful, unique, and interesting. Avoid generic fonts like Arial and Inter; opt instead for distinctive choices that elevate the frontend's aesthetics; unexpected, characterful font choices. Pair a distinctive display font with a refined body font.
-- **Color & Theme**: Commit to a cohesive aesthetic. Use CSS variables for consistency. Dominant colors with sharp accents outperform timid, evenly-distributed palettes.
-- **Motion**: Use animations for effects and micro-interactions. Prioritize CSS-only solutions for HTML. Use Motion library for React when available. Focus on high-impact moments: one well-orchestrated page load with staggered reveals (animation-delay) creates more delight than scattered micro-interactions. Use scroll-triggering and hover states that surprise.
-- **Spatial Composition**: Unexpected layouts. Asymmetry. Overlap. Diagonal flow. Grid-breaking elements. Generous negative space OR controlled density.
-- **Backgrounds & Visual Details**: Create atmosphere and depth rather than defaulting to solid colors. Add contextual effects and textures that match the overall aesthetic. Apply creative forms like gradient meshes, noise textures, geometric patterns, layered transparencies, dramatic shadows, decorative borders, custom cursors, and grain overlays.
+用户选择后，执行对应的 `git add <files>`
 
-NEVER use generic AI-generated aesthetics like overused font families (Inter, Roboto, Arial, system fonts), cliched color schemes (particularly purple gradients on white backgrounds), predictable layouts and component patterns, and cookie-cutter design that lacks context-specific character.
+### Step 3: 分析已 Staged 的变更
+- 执行 `git diff --cached --stat` 获取 staged 文件
+- 分析变更内容推断 type 和 scope
 
-Interpret creatively and make unexpected choices that feel genuinely designed for the context. No design should be the same. Vary between light and dark themes, different fonts, different aesthetics. NEVER converge on common choices (Space Grotesk, for example) across generations.
+### Step 4: 生成 Commit 信息
+使用 Conventional Commits 格式 + Body：
 
-**IMPORTANT**: Match implementation complexity to the aesthetic vision. Maximalist designs need elaborate code with extensive animations and effects. Minimalist or refined designs need restraint, precision, and careful attention to spacing, typography, and subtle details. Elegance comes from executing the vision well.
+```
+<type>(<scope>): <subject>
 
-Remember: Claude is capable of extraordinary creative work. Don't hold back, show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
+- <change 1>
+- <change 2>
+- <change 3>
+
+Closes #xxx (optional)
+```
+
+### Step 5: 用户确认 Commit 信息
+显示生成的 commit 信息，询问用户：
+
+```
+📝 生成的 Commit 信息:
+
+feat(components): add export/import accounts functionality
+
+- Add export_accounts command in backend
+- Add exportAllAccounts and importAccountsBundle in frontend
+- Add export/import buttons in AddAccountSection
+- Add i18n strings for 6 languages
+- Add dialog and fs plugins
+
+请确认:
+[1] ✅ 确认提交
+[2] 🔄 重新生成
+[3] ✏️ 自定义信息
+```
+
+### Step 6: 执行 Commit
+- 用户确认后执行 `git commit -m "..."`
+- **注意：不提供 git push 功能，由用户自行执行**
+
+## Type 检测规则
+根据文件路径和变更内容自动推断：
+- `src/components/*`, `src/pages/*` → `feat`
+- `src/hooks/*`, `src/utils/*` → `feat` 或 `refactor`
+- `src/types/*`, `src/i18n/*` → `feat`
+- `fix`, `bugfix`, `hotfix` → `fix`
+- `README.md`, `docs/*` → `docs`
+- `src/**/*.test.ts`, `src/**/*.spec.ts` → `test`
+- `package.json`, `Cargo.toml`, `*.config.*` → `chore`
+
+## Scope 检测规则
+根据文件目录自动推断：
+- `src/components/` → `components`
+- `src/hooks/` → `hooks`
+- `src/utils/` → `utils`
+- `src/types/` → `types`
+- `src/i18n/` → `i18n`
+- `src-tauri/src/` → `backend`
+- `src-tauri/Cargo.toml` → `cargo`
+- 根目录配置文件 → `config`
+
+## 错误处理
+- 无变更时提示："没有检测到代码变更"
+- git 未初始化时提示："当前目录不是 Git 仓库"
+- add 失败时提示错误信息并允许重试
