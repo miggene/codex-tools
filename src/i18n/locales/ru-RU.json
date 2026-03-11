@@ -344,12 +344,16 @@
 		"smartSwitchNoTarget": "Нет аккаунта для переключения. Сначала добавьте аккаунт.",
 		"smartSwitchAlreadyBest": "Текущий аккаунт уже имеет лучший остаток квоты (сначала 1week, затем 5h).",
 		"fileImportPrefix": "Импорт файлов",
+<<<<<<< HEAD
 		"bundleImportPrefix": "Импорт пакета",
 		"importFilesRequired": "Выберите JSON-файлы или папку для импорта.",
 		"noAccountsToExport": "Нет аккаунтов для экспорта.",
 		"exportSuccess": "Успешно экспортировано {{count}} аккаунтов.",
 		"exportFailed": "Ошибка экспорта: {{error}}",
 		"importInvalidFile": "Неверный формат файла импорта.",
+=======
+		"importFilesRequired": "Выберите JSON-файлы или папку для импорта.",
+>>>>>>> 2e94ca9 (feat:添加备份配置与导入配置)
 		"importFailedPlain": "{{prefix}}: ошибка: {{error}}",
 		"importFailedWithSource": "{{prefix}}: ошибка: {{source}}, {{error}}",
 		"importFailedNoValidJson": "{{prefix}}: не найдено подходящих JSON для импорта.",

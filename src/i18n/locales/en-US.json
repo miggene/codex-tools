@@ -20,8 +20,11 @@
 	},
 	"addAccount": {
 		"smartSwitch": "Smart switch",
+<<<<<<< HEAD
 		"exportAccounts": "Export",
 		"importAccounts": "Import",
+=======
+>>>>>>> 2e94ca9 (feat:添加备份配置与导入配置)
 		"startButton": "Add account",
 		"startingButton": "Starting...",
 		"waitingButton": "Waiting for auth...",
