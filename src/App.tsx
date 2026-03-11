@@ -88,6 +88,8 @@ function App() {
     onSmartSwitch,
     onUpdateRemoteServers,
     smartSwitching,
+    exportAllAccounts,
+    importAccountsBundle,
   } = useCodexController();
 
   useEffect(() => {
@@ -161,6 +163,9 @@ function App() {
                   onOpenAddDialog={onOpenAddDialog}
                   onSmartSwitch={() => void onSmartSwitch()}
                   smartSwitching={smartSwitching}
+                  onExportAccounts={() => void exportAllAccounts()}
+                  onImportAccounts={() => void importAccountsBundle()}
+                  importing={importingUpload}
                 />
               </div>
               <AccountsGrid
