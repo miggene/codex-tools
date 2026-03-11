@@ -49,7 +49,12 @@ export function AddAccountSection({
 				<button className="ghost" onClick={onExportAccounts} title={copy.addAccount.exportAccounts}>
 					{copy.addAccount.exportAccounts}
 				</button>
-				<button className="ghost" onClick={onImportAccounts} disabled={importing} title={copy.addAccount.importAccounts}>
+				<button
+					className="ghost"
+					onClick={onImportAccounts}
+					disabled={importing}
+					title={copy.addAccount.importAccounts}
+				>
 					{copy.addAccount.importAccounts}
 				</button>
 			</div>
