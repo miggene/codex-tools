@@ -1,6 +1,7 @@
 # Codex Tools
 
 一个基于 **React + Tauri** 的桌面工具，用来管理多个 Codex 账号，并提供本地 API 反代能力：
+
 - 查看账号用量
 - 快速切换和启动 Codex
 - 本地 `/v1` 反代
@@ -9,7 +10,8 @@
 仓库地址：<https://github.com/170-carry/codex-tools>
 
 ## 更新日志
-- v0.6.0 
+
+- v0.6.0
   1. 增加反代理远程服务器支持 （测试版本，预计会有一些问题）
   2. 支持cloudflared公网访问支持
 - v0.5.5
@@ -50,6 +52,7 @@
 - v0.2.1：优化整体启动方式。
 
 ## Cursor API反代功能提示
+
 1. 通过 Cursor 官网 下载并安装 Cursor。
 
 2. 在 Cursor 中，点击2026-02-03_16-52-37图标，单击Cursor Settings，选择Models页面。
@@ -72,7 +75,7 @@
 
 > 省流:
 
-> sudo spctl  --master-disable
+> sudo spctl --master-disable
 
 > sudo xattr -r -d com.apple.quarantine /Applications/Codex\ Tools.app
 
@@ -148,6 +151,7 @@ git push origin v0.1.3
 ```
 
 查看：
+
 - 代码仓库: <https://github.com/170-carry/codex-tools>
 - 版本发布: <https://github.com/170-carry/codex-tools/releases>
 
