@@ -20,8 +20,8 @@
 	},
 	"addAccount": {
 		"smartSwitch": "智能切换",
-		"exportAccounts": "导出",
-		"importAccounts": "导入",
+		"exportAccounts": "备份账号",
+		"importAccounts": "恢复账号",
 		"startButton": "添加账号",
 		"startingButton": "启动中...",
 		"waitingButton": "等待授权中...",

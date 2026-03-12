@@ -1,6 +1,6 @@
 ---
 name: git-commit-generator
-description: Generate git commit messages from current changes. Analyzes code modifications, allows user to select files to stage, then creates Conventional Commits format messages with body. User confirms before committing.
+description: Generate git commit messages from current changes. Analyzes code modifications, allows user to select files to stage, then creates Conventional Commits format messages with body. User confirms before committing. All commit messages should be in Chinese.
 ---
 
 # Git Commit Generator
@@ -8,6 +8,9 @@ description: Generate git commit messages from current changes. Analyzes code mo
 ## Usage
 - `/commit` - Stage files and generate commit message for current changes
 - `/git-commit` - Same as above
+
+## 重要：语言要求
+**所有生成的 commit 信息必须使用中文**
 
 ## Workflow
 
@@ -19,32 +22,32 @@ description: Generate git commit messages from current changes. Analyzes code mo
 - 未跟踪的文件 (??)
 
 ### Step 2: 用户选择要 Stage 的文件
-显示选项：
+首先检查当前是否有已 staged 的文件：
 ```
-📁 修改的文件:
+git diff --cached --name-only
+```
+如果已有 staged 文件，询问用户是否：
 
-M  src/hooks/useCodexController.ts
-M  src/components/AddAccountSection.tsx
-A  src-tauri/src/account_service.rs
-M  src-tauri/src/lib.rs
-M  src/i18n/locales/en-US.json
-...
+**选项设计**（使用 `question` 工具的 `custom` 选项）：
+```
+请选择 Stage 方式:
 
-请选择要 Stage 的文件:
-[1] 全部文件 (推荐)
-[2] 仅后端文件 (src-tauri/*)
-[3] 仅前端文件 (src/*)
-[4] 自定义选择...
+[1] ☑️ 全部勾选 (Stage 所有变更)
+[2] 仅新增文件 (Stage ?? 标记的文件)
+[3] 仅修改文件 (Stage M 标记的文件)
+[4] ⏭️ 跳过 (保持现有 staged 文件不变)
+[5] 📋 查看当前 staged 状态
 ```
 
 用户选择后，执行对应的 `git add <files>`
 
 ### Step 3: 分析已 Staged 的变更
 - 执行 `git diff --cached --stat` 获取 staged 文件
+- 执行 `git diff --cached` 获取具体变更内容
 - 分析变更内容推断 type 和 scope
 
 ### Step 4: 生成 Commit 信息
-使用 Conventional Commits 格式 + Body：
+使用 Conventional Commits 格式 + Body，**使用中文**：
 
 ```
 <type>(<scope>): <subject>
@@ -53,7 +56,18 @@ M  src/i18n/locales/en-US.json
 - <change 2>
 - <change 3>
 
-Closes #xxx (optional)
+Closes #xxx (可选)
+```
+
+示例（中文）：
+```
+feat(accounts): 添加账号导出与导入功能
+
+- 后端新增 export_accounts 命令
+- 前端添加 exportAllAccounts 和 importAccountsBundle 函数
+- 在账号页面添加导出/导入按钮
+- 添加 6 种语言的国际化文案
+- 添加 dialog 和 fs 插件依赖
 ```
 
 ### Step 5: 用户确认 Commit 信息
@@ -62,18 +76,19 @@ Closes #xxx (optional)
 ```
 📝 生成的 Commit 信息:
 
-feat(components): add export/import accounts functionality
+feat(accounts): 添加账号导出与导入功能
 
-- Add export_accounts command in backend
-- Add exportAllAccounts and importAccountsBundle in frontend
-- Add export/import buttons in AddAccountSection
-- Add i18n strings for 6 languages
-- Add dialog and fs plugins
+- 后端新增 export_accounts 命令
+- 前端添加 exportAllAccounts 和 importAccountsBundle 函数
+- 在账号页面添加导出/导入按钮
+- 添加 6 种语言的国际化文案
+- 添加 dialog 和 fs 插件依赖
 
 请确认:
 [1] ✅ 确认提交
 [2] 🔄 重新生成
-[3] ✏️ 自定义信息
+[3] ✏️ 自定义信息 (手动输入)
+[4] ❌ 取消
 ```
 
 ### Step 6: 执行 Commit
@@ -82,13 +97,13 @@ feat(components): add export/import accounts functionality
 
 ## Type 检测规则
 根据文件路径和变更内容自动推断：
-- `src/components/*`, `src/pages/*` → `feat`
+- `src/components/*`, `src/pages/*` → `feat` (新功能)
 - `src/hooks/*`, `src/utils/*` → `feat` 或 `refactor`
 - `src/types/*`, `src/i18n/*` → `feat`
-- `fix`, `bugfix`, `hotfix` → `fix`
-- `README.md`, `docs/*` → `docs`
-- `src/**/*.test.ts`, `src/**/*.spec.ts` → `test`
-- `package.json`, `Cargo.toml`, `*.config.*` → `chore`
+- `fix`, `bugfix`, `hotfix` → `fix` (修复)
+- `README.md`, `docs/*` → `docs` (文档)
+- `src/**/*.test.ts`, `src/**/*.spec.ts` → `test` (测试)
+- `package.json`, `Cargo.toml`, `*.config.*` → `chore` (维护)
 
 ## Scope 检测规则
 根据文件目录自动推断：

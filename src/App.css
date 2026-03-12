@@ -837,10 +837,11 @@ button.danger {
   border-radius: 14px;
   background: linear-gradient(130deg, var(--import-bg), rgba(255, 255, 255, 0.46));
   padding: 12px 14px;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 10px;
+  display: flex;
+  justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .importInfo {
@@ -858,6 +859,18 @@ button.danger {
   align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+
+.importBarLeft {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.importBarRight {
+  display: flex;
+  gap: 10px;
+  align-items: center;
 }
 
 .importHint {

@@ -31,6 +31,7 @@ use models::ApiProxyStatus;
 use models::AppSettings;
 use models::AppSettingsPatch;
 use models::AuthJsonImportInput;
+use models::StoredAccount;
 use models::CloudflaredStatus;
 use models::CurrentAuthStatus;
 use models::DeployRemoteProxyInput;
@@ -93,8 +94,21 @@ async fn delete_account(
 }
 
 #[tauri::command]
-async fn export_accounts(app: AppHandle) -> Result<Vec<AuthJsonImportInput>, String> {
+async fn export_accounts(app: AppHandle) -> Result<Vec<StoredAccount>, String> {
     account_service::export_accounts_internal(&app).await
+}
+
+#[tauri::command]
+async fn restore_accounts(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    accounts: Vec<StoredAccount>,
+) -> Result<ImportAccountsResult, String> {
+    let result = account_service::restore_accounts_internal(&app, state.inner(), accounts).await?;
+    if result.imported_count > 0 || result.updated_count > 0 {
+        let _ = tray::refresh_macos_tray_snapshot(&app);
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -576,7 +590,9 @@ pub fn run() {
             read_remote_proxy_logs,
             pick_local_identity_file,
             is_sshpass_available,
-            install_sshpass
+            install_sshpass,
+            export_accounts,
+            restore_accounts
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

@@ -520,30 +520,50 @@ fn normalize_import_source(source: &str) -> String {
     }
 }
 
-pub(crate) async fn export_accounts_internal(app: &AppHandle) -> Result<Vec<AuthJsonImportInput>, String> {
+pub(crate) async fn export_accounts_internal(app: &AppHandle) -> Result<Vec<StoredAccount>, String> {
     let store = load_store(app)?;
     if store.accounts.is_empty() {
         return Err("没有可导出的账号".to_string());
     }
 
-    let items: Vec<AuthJsonImportInput> = store
-        .accounts
-        .iter()
-        .map(|account| {
-            let content = serde_json::to_string(&account.auth_json)
-                .unwrap_or_default();
-            let source = if account.label.is_empty() {
-                account.account_id.clone()
-            } else {
-                account.label.clone()
-            };
-            AuthJsonImportInput {
-                source,
-                content,
-                label: Some(account.label.clone()),
-            }
-        })
-        .collect();
+    Ok(store.accounts.clone())
+}
 
-    Ok(items)
+pub(crate) async fn restore_accounts_internal(
+    app: &AppHandle,
+    state: &AppState,
+    accounts: Vec<StoredAccount>,
+) -> Result<ImportAccountsResult, String> {
+    if accounts.is_empty() {
+        return Err("备份文件中没有账号数据".to_string());
+    }
+
+    let total_count = accounts.len();
+    
+    let (imported_count, updated_count) = {
+        let mut _guard = state.store_lock.lock().await;
+        let mut store = load_store(app)?;
+        let mut imported_count = 0usize;
+        let mut updated_count = 0usize;
+
+        for account in accounts {
+            if let Some(existing) = store.accounts.iter_mut().find(|a| a.account_id == account.account_id) {
+                *existing = account;
+                updated_count += 1;
+            } else {
+                store.accounts.push(account);
+                imported_count += 1;
+            }
+        }
+
+        save_store(app, &store)?;
+        (imported_count, updated_count)
+    };
+
+    Ok(ImportAccountsResult {
+        total_count,
+        imported_count,
+        updated_count,
+        failures: Vec::new(),
+    })
 }

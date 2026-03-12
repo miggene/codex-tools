@@ -115,13 +115,15 @@ pub(crate) struct ExtractedAuth {
     pub(crate) plan_type: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AuthJsonImportInput {
     pub(crate) source: String,
     pub(crate) content: String,
     pub(crate) label: Option<String>,
 }
+
+
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

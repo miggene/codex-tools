@@ -60,6 +60,19 @@ export type AuthJsonImportInput = {
   label: string | null;
 };
 
+export type StoredAccount = {
+  id: string;
+  label: string;
+  email: string | null;
+  accountId: string;
+  planType: string | null;
+  authJson: unknown;
+  addedAt: number;
+  updatedAt: number;
+  usage: UsageSnapshot | null;
+  usageError: string | null;
+};
+
 export type ImportAccountFailure = {
   source: string;
   error: string;

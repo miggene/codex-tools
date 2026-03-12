@@ -20,8 +20,8 @@
 	},
 	"addAccount": {
 		"smartSwitch": "Умное переключение",
-		"exportAccounts": "Экспорт",
-		"importAccounts": "Импорт",
+		"exportAccounts": "Резервная копия",
+		"importAccounts": "Восстановить",
 		"startButton": "Добавить аккаунт",
 		"startingButton": "Запуск...",
 		"waitingButton": "Ожидание авторизации...",

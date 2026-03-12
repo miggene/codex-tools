@@ -17,6 +17,7 @@ import type {
 	AuthJsonImportInput,
 	CloudflaredStatus,
 	CurrentAuthStatus,
+	StoredAccount,
 	ImportAccountsResult,
 	InstalledEditorApp,
 	Notice,
@@ -508,7 +509,7 @@ export function useCodexController() {
 				await loadApiProxyStatus();
 				await loadCloudflaredStatus();
 				await refreshUsage(true);
-				await checkForAppUpdate(true);
+				// await checkForAppUpdate(true); // Disabled auto-update check
 			} finally {
 				if (!cancelled) {
 					setLoading(false);
@@ -659,7 +660,7 @@ export function useCodexController() {
 				}
 				unlisten = fn;
 			})
-			.catch(() => {});
+			.catch(() => { });
 
 		return () => {
 			disposed = true;
@@ -813,14 +814,14 @@ export function useCodexController() {
 
 	const exportAllAccounts = useCallback(async () => {
 		try {
-			const items = await invoke<AuthJsonImportInput[]>('export_accounts');
+			const items = await invoke<StoredAccount[]>('export_accounts');
 			if (items.length === 0) {
 				setNotice({ type: 'info', message: copy.notices.noAccountsToExport });
 				return;
 			}
 
 			const filePath = await save({
-				defaultPath: 'codex-accounts.json',
+				defaultPath: 'codex-accounts-backup.json',
 				filters: [{ name: 'JSON', extensions: ['json'] }],
 			});
 			if (!filePath) {
@@ -849,16 +850,17 @@ export function useCodexController() {
 			}
 
 			const content = await readTextFile(filePath);
-			const items = JSON.parse(content) as AuthJsonImportInput[];
-			if (!Array.isArray(items) || items.length === 0) {
+			// The file should be a JSON array of StoredAccount
+			const accounts = JSON.parse(content) as StoredAccount[];
+			if (!Array.isArray(accounts) || accounts.length === 0) {
 				setNotice({ type: 'error', message: copy.notices.importInvalidFile });
 				return;
 			}
 
 			setImportingUpload(true);
 			try {
-				const result = await invoke<ImportAccountsResult>('import_auth_json_accounts', {
-					items,
+				const result = await invoke<ImportAccountsResult>('restore_accounts', {
+					accounts,
 				});
 				await applyImportResult(localizeImportResult(result), copy.notices.bundleImportPrefix);
 			} finally {
