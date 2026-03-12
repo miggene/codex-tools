@@ -344,16 +344,12 @@
 		"smartSwitchNoTarget": "전환 가능한 계정이 없습니다. 먼저 계정을 추가해 주세요.",
 		"smartSwitchAlreadyBest": "현재 계정이 이미 최적의 잔여량 계정입니다 (1week 우선, 그다음 5h).",
 		"fileImportPrefix": "파일 가져오기",
-<<<<<<< HEAD
 		"bundleImportPrefix": "일괄 가져오기",
 		"importFilesRequired": "가져올 JSON 파일 또는 폴더를 선택하세요.",
 		"noAccountsToExport": "내보낼 계정이 없습니다.",
 		"exportSuccess": "{{count}}개의 계정을 성공적으로 내보냈습니다.",
 		"exportFailed": "내보내기 실패: {{error}}",
 		"importInvalidFile": "잘못된 가져오기 파일 형식입니다.",
-=======
-		"importFilesRequired": "가져올 JSON 파일 또는 폴더를 선택하세요.",
->>>>>>> 2e94ca9 (feat:添加备份配置与导入配置)
 		"importFailedPlain": "{{prefix}} 실패: {{error}}",
 		"importFailedWithSource": "{{prefix}} 실패: {{source}}, {{error}}",
 		"importFailedNoValidJson": "{{prefix}} 실패: 가져올 수 있는 유효한 JSON이 없습니다.",
