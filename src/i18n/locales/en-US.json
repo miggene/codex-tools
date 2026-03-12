@@ -21,10 +21,15 @@
 	"addAccount": {
 		"smartSwitch": "Smart switch",
 <<<<<<< HEAD
+<<<<<<< HEAD
 		"exportAccounts": "Export",
 		"importAccounts": "Import",
 =======
 >>>>>>> 2e94ca9 (feat:添加备份配置与导入配置)
+=======
+		"exportAccounts": "Backup accounts",
+		"importAccounts": "Restore accounts",
+>>>>>>> 8479a39 (feat(accounts): 添加账号备份与恢复功能)
 		"startButton": "Add account",
 		"startingButton": "Starting...",
 		"waitingButton": "Waiting for auth...",

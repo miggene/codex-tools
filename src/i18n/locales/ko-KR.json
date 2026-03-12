@@ -20,8 +20,8 @@
 	},
 	"addAccount": {
 		"smartSwitch": "스마트 전환",
-		"exportAccounts": "내보내기",
-		"importAccounts": "가져오기",
+		"exportAccounts": "백업",
+		"importAccounts": "복원",
 		"startButton": "계정 추가",
 		"startingButton": "시작 중...",
 		"waitingButton": "인증 대기 중...",

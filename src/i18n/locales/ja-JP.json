@@ -20,8 +20,8 @@
   },
   "addAccount": {
     "smartSwitch": "スマート切替",
-    "exportAccounts": "エクスポート",
-    "importAccounts": "インポート",
+    "exportAccounts": "バックアップ",
+    "importAccounts": "リストア",
     "startButton": "アカウント追加",
     "startingButton": "起動中...",
     "waitingButton": "認証待機中...",
