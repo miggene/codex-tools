@@ -1,61 +1,43 @@
-import { useI18n } from '../i18n/I18nProvider';
+import { useI18n } from "../i18n/I18nProvider";
 
 type AddAccountSectionProps = {
-	startingAdd: boolean;
-	addFlowActive: boolean;
-	onOpenAddDialog: () => void;
-	onSmartSwitch: () => void;
-	smartSwitching: boolean;
-	onExportAccounts: () => void;
-	onImportAccounts: () => void;
-	importing: boolean;
+  startingAdd: boolean;
+  addFlowActive: boolean;
+  onOpenAddDialog: () => void;
+  onSmartSwitch: () => void;
+  smartSwitching: boolean;
 };
 
 export function AddAccountSection({
-	startingAdd,
-	addFlowActive,
-	onOpenAddDialog,
-	onSmartSwitch,
-	smartSwitching,
-	onExportAccounts,
-	onImportAccounts,
-	importing,
+  startingAdd,
+  addFlowActive,
+  onOpenAddDialog,
+  onSmartSwitch,
+  smartSwitching,
 }: AddAccountSectionProps) {
-	const { copy } = useI18n();
+  const { copy } = useI18n();
 
-	return (
-		<section className="importBar">
-			<div className="importBarLeft">
-				<button
-					className="smartSwitchButton importSmartSwitch"
-					onClick={onSmartSwitch}
-					disabled={smartSwitching}
-					title={copy.addAccount.smartSwitch}
-					aria-label={copy.addAccount.smartSwitch}
-				>
-					{copy.addAccount.smartSwitch}
-				</button>
-				<button className="primary" onClick={onOpenAddDialog}>
-					{startingAdd
-						? copy.addAccount.startingButton
-						: addFlowActive
-							? copy.addAccount.waitingButton
-							: copy.addAccount.startButton}
-				</button>
-			</div>
-			<div className="importBarRight">
-				<button className="ghost" onClick={onExportAccounts} title={copy.addAccount.exportAccounts}>
-					{copy.addAccount.exportAccounts}
-				</button>
-				<button
-					className="ghost"
-					onClick={onImportAccounts}
-					disabled={importing}
-					title={copy.addAccount.importAccounts}
-				>
-					{copy.addAccount.importAccounts}
-				</button>
-			</div>
-		</section>
-	);
+  return (
+    <section className="importBar">
+      <button
+        className="ghost smartSwitchButton importSmartSwitch"
+        onClick={onSmartSwitch}
+        disabled={smartSwitching}
+        title={copy.addAccount.smartSwitch}
+        aria-label={copy.addAccount.smartSwitch}
+      >
+        {copy.addAccount.smartSwitch}
+      </button>
+      <button
+        className="primary importPrimary"
+        onClick={onOpenAddDialog}
+      >
+        {startingAdd
+          ? copy.addAccount.startingButton
+          : addFlowActive
+            ? copy.addAccount.waitingButton
+            : copy.addAccount.startButton}
+      </button>
+    </section>
+  );
 }
