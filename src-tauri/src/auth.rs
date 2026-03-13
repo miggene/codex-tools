@@ -259,6 +259,35 @@ pub(crate) fn current_auth_account_id() -> Option<String> {
         .map(|auth| auth.account_id)
 }
 
+pub(crate) fn normalize_plan_type_key(plan_type: Option<&str>) -> String {
+    let Some(value) = plan_type.map(str::trim).filter(|value| !value.is_empty()) else {
+        return "unknown".to_string();
+    };
+    value.to_ascii_lowercase()
+}
+
+pub(crate) fn account_variant_key(account_id: &str, plan_type: Option<&str>) -> String {
+    format!(
+        "{}|{}",
+        account_id.trim(),
+        normalize_plan_type_key(plan_type)
+    )
+}
+
+pub(crate) fn auth_variant_key(auth_json: &Value) -> Option<String> {
+    let extracted = extract_auth(auth_json).ok()?;
+    Some(account_variant_key(
+        &extracted.account_id,
+        extracted.plan_type.as_deref(),
+    ))
+}
+
+pub(crate) fn current_auth_variant_key() -> Option<String> {
+    read_current_codex_auth()
+        .ok()
+        .and_then(|auth_json| auth_variant_key(&auth_json))
+}
+
 /// 为第三方客户端同步登录态时，提取可复用的 OpenAI OAuth token。
 pub(crate) fn extract_codex_oauth_tokens(auth_json: &Value) -> Result<CodexOAuthTokens, String> {
     let tokens = auth_token_object(auth_json).ok_or_else(|| "auth.json 缺少 tokens".to_string())?;

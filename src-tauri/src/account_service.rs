@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use tauri::AppHandle;
 
+use crate::auth::account_variant_key;
+use crate::auth::auth_variant_key;
 use crate::auth::current_auth_account_id;
+use crate::auth::current_auth_variant_key;
 use crate::auth::extract_auth;
 use crate::auth::normalize_imported_auth_json;
 use crate::auth::read_current_codex_auth;
@@ -42,10 +45,11 @@ pub(crate) async fn list_accounts_internal(
     let _guard = state.store_lock.lock().await;
     let store = load_store(app)?;
     let current_account_id = current_auth_account_id();
+    let current_variant_key = current_auth_variant_key();
     Ok(store
         .accounts
         .iter()
-        .map(|account| account.to_summary(current_account_id.as_deref()))
+        .map(|account| account.to_summary(current_account_id.as_deref(), current_variant_key.as_deref()))
         .collect())
 }
 
@@ -98,6 +102,7 @@ pub(crate) async fn import_auth_json_accounts_internal(
     }
 
     let current_account_id = current_auth_account_id();
+    let current_variant_key = current_auth_variant_key();
     let (imported_count, updated_count) = {
         let mut _guard = state.store_lock.lock().await;
         let mut store = load_store(app)?;
@@ -105,8 +110,12 @@ pub(crate) async fn import_auth_json_accounts_internal(
         let mut updated_count = 0usize;
 
         for prepared in prepared_imports {
-            let (_, updated_existing) =
-                upsert_prepared_import(&mut store, prepared, current_account_id.as_deref());
+            let (_, updated_existing) = upsert_prepared_import(
+                &mut store,
+                prepared,
+                current_account_id.as_deref(),
+                current_variant_key.as_deref(),
+            );
             if updated_existing {
                 updated_count += 1;
             } else {
@@ -148,7 +157,7 @@ pub(crate) async fn delete_account_internal(
 ///
 /// 为避免“后台刷新覆盖新增账号”的竞态：
 /// 1) 先拿快照用于网络请求；
-/// 2) 请求完成后重新加载最新 store 并按 account_id 合并写回。
+/// 2) 请求完成后重新加载最新 store 并按记录 id 合并写回。
 pub(crate) async fn refresh_all_usage_internal(
     app: &AppHandle,
     state: &AppState,
@@ -156,7 +165,7 @@ pub(crate) async fn refresh_all_usage_internal(
 ) -> Result<Vec<AccountSummary>, String> {
     #[derive(Debug)]
     struct RefreshTarget {
-        account_id: String,
+        record_id: String,
         auth_json: serde_json::Value,
         auth_is_current: bool,
     }
@@ -165,11 +174,7 @@ pub(crate) async fn refresh_all_usage_internal(
         read_current_codex_auth_optional()
             .ok()
             .flatten()
-            .and_then(|auth_json| {
-                extract_auth(&auth_json)
-                    .ok()
-                    .map(|extracted| (extracted.account_id, auth_json))
-            });
+            .and_then(|auth_json| auth_variant_key(&auth_json).map(|variant_key| (variant_key, auth_json)));
 
     let refresh_targets: Vec<RefreshTarget> = {
         let _guard = state.store_lock.lock().await;
@@ -178,10 +183,11 @@ pub(crate) async fn refresh_all_usage_internal(
             .accounts
             .into_iter()
             .map(|account| {
+                let account_variant_key = account.variant_key();
                 let (auth_json, auth_is_current) = current_auth_override
                     .as_ref()
-                    .and_then(|(account_id, auth_json)| {
-                        if account_id == &account.account_id {
+                    .and_then(|(variant_key, auth_json)| {
+                        if variant_key == &account_variant_key {
                             Some((auth_json.clone(), true))
                         } else {
                             None
@@ -190,7 +196,7 @@ pub(crate) async fn refresh_all_usage_internal(
                     .unwrap_or((account.auth_json, false));
 
                 RefreshTarget {
-                    account_id: account.account_id,
+                    record_id: account.id,
                     auth_json,
                     auth_is_current,
                 }
@@ -291,14 +297,14 @@ pub(crate) async fn refresh_all_usage_internal(
                     }
                 }
             };
-            (target.account_id, outcome)
+            (target.record_id, outcome)
         }));
     }
 
     for handle in handles {
         match handle.await {
-            Ok((account_id, outcome)) => {
-                outcomes.insert(account_id, outcome);
+            Ok((record_id, outcome)) => {
+                outcomes.insert(record_id, outcome);
             }
             Err(err) => {
                 log::warn!("并行刷新账号用量任务异常: {err}");
@@ -311,7 +317,7 @@ pub(crate) async fn refresh_all_usage_internal(
         let mut latest_store = load_store(app)?;
 
         for account in &mut latest_store.accounts {
-            let Some(outcome) = outcomes.get(&account.account_id) else {
+            let Some(outcome) = outcomes.get(&account.id) else {
                 continue;
             };
 
@@ -347,10 +353,11 @@ pub(crate) async fn refresh_all_usage_internal(
 
     // 与当前 auth 文件重新对齐，确保 current 标签准确。
     let current_account_id = current_auth_account_id();
+    let current_variant_key = current_auth_variant_key();
     let summaries: Vec<AccountSummary> = store
         .accounts
         .iter()
-        .map(|account| account.to_summary(current_account_id.as_deref()))
+        .map(|account| account.to_summary(current_account_id.as_deref(), current_variant_key.as_deref()))
         .collect();
 
     Ok(summaries)
@@ -422,11 +429,16 @@ async fn commit_prepared_import(
     prepared: PreparedImport,
 ) -> Result<AccountSummary, String> {
     let current_account_id = current_auth_account_id();
+    let current_variant_key = current_auth_variant_key();
     let summary = {
         let mut _guard = state.store_lock.lock().await;
         let mut store = load_store(app)?;
-        let (summary, _) =
-            upsert_prepared_import(&mut store, prepared, current_account_id.as_deref());
+        let (summary, _) = upsert_prepared_import(
+            &mut store,
+            prepared,
+            current_account_id.as_deref(),
+            current_variant_key.as_deref(),
+        );
         save_store(app, &store)?;
         summary
     };
@@ -438,6 +450,7 @@ fn upsert_prepared_import(
     store: &mut AccountsStore,
     prepared: PreparedImport,
     current_account_id: Option<&str>,
+    current_variant_key: Option<&str>,
 ) -> (AccountSummary, bool) {
     let PreparedImport {
         auth_json,
@@ -451,41 +464,43 @@ fn upsert_prepared_import(
     let now = now_unix_seconds();
     let resolved_label = normalize_custom_label(label)
         .unwrap_or_else(|| fallback_account_label(email.as_deref(), &account_id));
+    let resolved_plan_type = usage
+        .as_ref()
+        .and_then(|snapshot| snapshot.plan_type.clone())
+        .or(plan_type);
+    let resolved_variant_key =
+        account_variant_key(&account_id, resolved_plan_type.as_deref());
 
     if let Some(existing) = store
         .accounts
         .iter_mut()
-        .find(|account| account.account_id == account_id)
+        .find(|account| account.variant_key() == resolved_variant_key)
     {
         existing.label = resolved_label;
         existing.email = email;
-        existing.plan_type = usage
-            .as_ref()
-            .and_then(|snapshot| snapshot.plan_type.clone())
-            .or(plan_type)
-            .or(existing.plan_type.clone());
+        existing.plan_type = resolved_plan_type.clone().or(existing.plan_type.clone());
         existing.auth_json = auth_json;
         existing.updated_at = now;
         existing.usage = usage;
         existing.usage_error = None;
-        (existing.to_summary(current_account_id), true)
+        (
+            existing.to_summary(current_account_id, current_variant_key),
+            true,
+        )
     } else {
         let stored = StoredAccount {
             id: uuid::Uuid::new_v4().to_string(),
             label: resolved_label,
             email,
             account_id,
-            plan_type: usage
-                .as_ref()
-                .and_then(|snapshot| snapshot.plan_type.clone())
-                .or(plan_type),
+            plan_type: resolved_plan_type,
             auth_json,
             added_at: now,
             updated_at: now,
             usage,
             usage_error: None,
         };
-        let summary = stored.to_summary(current_account_id);
+        let summary = stored.to_summary(current_account_id, current_variant_key);
         store.accounts.push(stored);
         (summary, false)
     }

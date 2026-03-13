@@ -11,6 +11,7 @@ use tauri::AppHandle;
 use tauri::Manager;
 
 use crate::auth::extract_auth;
+use crate::auth::account_variant_key;
 use crate::auth::read_current_codex_auth_optional;
 use crate::models::AccountsStore;
 use crate::models::StoredAccount;
@@ -29,7 +30,7 @@ pub(crate) fn save_store(app: &AppHandle, store: &AccountsStore) -> Result<(), S
 }
 
 /// 启动时自动同步当前登录账号：
-/// 若本机已有 `~/.codex/auth.json` 且账号不在列表中，则自动写入存储。
+/// 若本机已有 `~/.codex/auth.json` 且相同“账号 + 套餐态”不在列表中，则自动写入存储。
 #[cfg(feature = "desktop")]
 pub(crate) fn sync_current_auth_account_on_startup(app: &AppHandle) -> Result<(), String> {
     sync_current_auth_account_on_startup_in_path(&account_store_path(app)?)
@@ -110,10 +111,12 @@ pub(crate) fn sync_current_auth_account_on_startup_in_path(path: &Path) -> Resul
     };
 
     let mut store = load_store_from_path(path)?;
+    let extracted_variant_key =
+        account_variant_key(&extracted.account_id, extracted.plan_type.as_deref());
     let already_exists = store
         .accounts
         .iter()
-        .any(|account| account.account_id == extracted.account_id);
+        .any(|account| account.variant_key() == extracted_variant_key);
     if already_exists {
         return Ok(());
     }

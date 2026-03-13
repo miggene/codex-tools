@@ -36,7 +36,7 @@ use tauri::AppHandle;
 #[cfg(feature = "desktop")]
 use tauri::Manager;
 
-use crate::auth::current_auth_account_id;
+use crate::auth::current_auth_variant_key;
 use crate::auth::extract_auth;
 use crate::auth::refresh_chatgpt_auth_tokens;
 use crate::auth::write_active_codex_auth;
@@ -91,10 +91,12 @@ pub(crate) struct ProxyStorageContext {
 
 #[derive(Clone)]
 struct ProxyCandidate {
+    id: String,
     label: String,
     account_id: String,
     access_token: String,
     auth_json: Value,
+    variant_key: String,
     plan_type: Option<String>,
     usage: Option<UsageSnapshot>,
 }
@@ -1283,11 +1285,14 @@ async fn load_proxy_candidates(
 
 fn account_to_proxy_candidate(account: StoredAccount) -> Option<ProxyCandidate> {
     let extracted = extract_auth(&account.auth_json).ok()?;
+    let variant_key = account.variant_key();
     Some(ProxyCandidate {
+        id: account.id,
         label: account.label,
         account_id: extracted.account_id,
         access_token: extracted.access_token,
         auth_json: account.auth_json,
+        variant_key,
         plan_type: account
             .usage
             .as_ref()
@@ -1356,16 +1361,18 @@ async fn refresh_proxy_candidate_auth(
     candidate: &ProxyCandidate,
 ) -> Result<ProxyCandidate, String> {
     let refreshed_auth_json = refresh_chatgpt_auth_tokens(&candidate.auth_json).await?;
-    persist_refreshed_candidate_auth(storage, &candidate.account_id, &refreshed_auth_json).await?;
+    persist_refreshed_candidate_auth(storage, &candidate.id, &refreshed_auth_json).await?;
 
     let extracted = extract_auth(&refreshed_auth_json)
         .map_err(|error| format!("刷新后解析账号登录态失败: {error}"))?;
 
     Ok(ProxyCandidate {
+        id: candidate.id.clone(),
         label: candidate.label.clone(),
         account_id: extracted.account_id,
         access_token: extracted.access_token,
         auth_json: refreshed_auth_json,
+        variant_key: candidate.variant_key.clone(),
         plan_type: candidate.plan_type.clone().or(extracted.plan_type),
         usage: candidate.usage.clone(),
     })
@@ -1373,7 +1380,7 @@ async fn refresh_proxy_candidate_auth(
 
 async fn persist_refreshed_candidate_auth(
     storage: &ProxyStorageContext,
-    account_id: &str,
+    id: &str,
     refreshed_auth_json: &Value,
 ) -> Result<(), String> {
     let _guard = storage.store_lock.lock().await;
@@ -1383,7 +1390,7 @@ async fn persist_refreshed_candidate_auth(
     if let Some(account) = store
         .accounts
         .iter_mut()
-        .find(|account| account.account_id == account_id)
+        .find(|account| account.id == id)
     {
         account.auth_json = refreshed_auth_json.clone();
         account.updated_at = now_unix_seconds();
@@ -1392,7 +1399,14 @@ async fn persist_refreshed_candidate_auth(
     save_store_to_path(&store_path, &store)?;
 
     if storage.sync_active_auth_on_refresh
-        && current_auth_account_id().as_deref() == Some(account_id)
+        && current_auth_variant_key()
+            .as_deref()
+            == store
+                .accounts
+                .iter()
+                .find(|account| account.id == id)
+                .map(|account| account.variant_key())
+                .as_deref()
     {
         write_active_codex_auth(refreshed_auth_json)?;
     }

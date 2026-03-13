@@ -31,7 +31,6 @@ export function SettingsPanel({
   onUpdateSettings,
 }: SettingsPanelProps) {
   const { copy, locale, localeOptions, setLocale } = useI18n();
-  const showThemeSetting = false;
   const languageLabel = copy.topBar.languagePicker;
   const languageOptions = localeOptions.map((item) => ({
     id: item.code,
@@ -62,14 +61,12 @@ export function SettingsPanel({
             />
           </div>
 
-          {showThemeSetting ? (
-            <div className="settingRow">
-              <div className="settingMeta">
-                <strong>{copy.settings.theme.label}</strong>
-              </div>
-              <ThemeSwitch themeMode={themeMode} onToggle={onToggleTheme} />
+          <div className="settingRow">
+            <div className="settingMeta">
+              <strong>{copy.settings.theme.label}</strong>
             </div>
-          ) : null}
+            <ThemeSwitch themeMode={themeMode} onToggle={onToggleTheme} />
+          </div>
 
           <div className="settingRow">
             <div className="settingMeta">

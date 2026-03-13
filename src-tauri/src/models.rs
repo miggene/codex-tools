@@ -2,6 +2,9 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::auth::account_variant_key;
+use crate::auth::extract_auth;
+
 fn default_api_proxy_port() -> u16 {
     8787
 }
@@ -345,7 +348,35 @@ pub(crate) struct AppSettingsPatch {
 }
 
 impl StoredAccount {
-    pub(crate) fn to_summary(&self, current_account_id: Option<&str>) -> AccountSummary {
+    pub(crate) fn resolved_plan_type(&self) -> Option<String> {
+        self.usage
+            .as_ref()
+            .and_then(|usage| usage.plan_type.clone())
+            .or(self.plan_type.clone())
+            .or_else(|| {
+                extract_auth(&self.auth_json)
+                    .ok()
+                    .and_then(|auth| auth.plan_type)
+            })
+    }
+
+    pub(crate) fn variant_key(&self) -> String {
+        account_variant_key(&self.account_id, self.resolved_plan_type().as_deref())
+    }
+
+    pub(crate) fn to_summary(
+        &self,
+        current_account_id: Option<&str>,
+        current_variant_key: Option<&str>,
+    ) -> AccountSummary {
+        let is_current = current_variant_key
+            .map(|variant_key| variant_key == self.variant_key())
+            .unwrap_or_else(|| {
+                current_account_id
+                    .map(|id| id == self.account_id)
+                    .unwrap_or(false)
+            });
+
         AccountSummary {
             id: self.id.clone(),
             label: self.label.clone(),
@@ -356,9 +387,7 @@ impl StoredAccount {
             updated_at: self.updated_at,
             usage: self.usage.clone(),
             usage_error: self.usage_error.clone(),
-            is_current: current_account_id
-                .map(|id| id == self.account_id)
-                .unwrap_or(false),
+            is_current,
         }
     }
 }
