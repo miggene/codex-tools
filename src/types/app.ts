@@ -90,6 +90,7 @@ export type ApiProxyStatus = {
   port: number | null;
   apiKey: string | null;
   baseUrl: string | null;
+  lanBaseUrl: string | null;
   activeAccountId: string | null;
   activeAccountLabel: string | null;
   lastError: string | null;
@@ -212,6 +213,7 @@ export type AppSettings = {
   restartEditorsOnSwitch: boolean;
   restartEditorTargets: EditorAppId[];
   autoStartApiProxy: boolean;
+  apiProxyPort: number;
   remoteServers: RemoteServerConfig[];
   locale: AppLocale;
 };
