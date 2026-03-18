@@ -35,6 +35,8 @@ export function AddAccountSection({
         >
           {copy.addAccount.smartSwitch}
         </button>
+      </div>
+      <div className="importBarRight">
         <button className="primary" onClick={onOpenAddDialog}>
           {startingAdd
             ? copy.addAccount.startingButton
@@ -42,8 +44,6 @@ export function AddAccountSection({
               ? copy.addAccount.waitingButton
               : copy.addAccount.startButton}
         </button>
-      </div>
-      <div className="importBarRight">
         <button className="ghost" onClick={onExportAccounts} title={copy.addAccount.exportAccounts}>
           {copy.addAccount.exportAccounts}
         </button>
